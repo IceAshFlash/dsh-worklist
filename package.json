@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/REPLACE-ME/dsh-worklist.git"
+    "url": "git+https://github.com/IceAshFlash/dsh-worklist.git"
   },
-  "homepage": "https://github.com/REPLACE-ME/dsh-worklist#readme",
+  "homepage": "https://github.com/IceAshFlash/dsh-worklist#readme",
   "bugs": {
-    "url": "https://github.com/REPLACE-ME/dsh-worklist/issues"
+    "url": "https://github.com/IceAshFlash/dsh-worklist/issues"
   },
   "exports": {
     ".": "./index.js",
