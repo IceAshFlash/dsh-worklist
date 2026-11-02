@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>工作清单</title>
+<style>
+  /* 独立窗口里没有 DSH 的主题变量，这里补一套；
+     DSH 面板里这些变量由宿主提供，不会被覆盖。 */
+  :root {
+    --dsw-alias-bg-base: #ffffff;
+    --dsw-alias-bg-layer-1: #fafbfc;
+    --dsw-alias-bg-layer-2: #f0f2f5;
+    --dsw-alias-bg-overlay: #ffffff;
+    --dsw-alias-border-l1: #e6e8eb;
+    --dsw-alias-border-l2: #d3d8df;
+    --dsw-alias-brand-primary: #4d7cfe;
+    --dsw-alias-label-primary: #1c1f24;
+    --dsw-alias-label-secondary: #5b6470;
+    --dsw-alias-label-tertiary: #8b929c;
+    --dsw-alias-state-error-primary: #e5484d;
+    --dsw-alias-state-warn-primary: #d9822b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --dsw-alias-bg-base: #17191d;
+      --dsw-alias-bg-layer-1: #1e2126;
+      --dsw-alias-bg-layer-2: #262a31;
+      --dsw-alias-bg-overlay: #1c1f24;
+      --dsw-alias-border-l1: #2f343c;
+      --dsw-alias-border-l2: #3d434c;
+      --dsw-alias-brand-primary: #6b93ff;
+      --dsw-alias-label-primary: #e8eaee;
+      --dsw-alias-label-secondary: #a8b0ba;
+      --dsw-alias-label-tertiary: #7d8590;
+      --dsw-alias-state-error-primary: #ff6b6b;
+      --dsw-alias-state-warn-primary: #e0a15a;
+    }
+    /* .wl-root 里自带 --wl-accent，用更高特异性盖掉，否则暗色下按钮还是深蓝 */
+    body .wl-root { --wl-accent: #6b93ff; --wl-accent-hover: #4f7cf0; }
+  }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--dsw-alias-bg-base); overflow: hidden; }
+  #app { height: 100vh; }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="/app.js"></script>
+  <script>
+    window.__WorklistUI__.mount(document.getElementById('app'), { base: '/api' })
+
+    // 窗口活着的时候每 25 秒说一句话，服务端据此判断该不该自己退出。
+    setInterval(function () {
+      fetch('/api/meta', { credentials: 'same-origin' }).catch(function () {})
+    }, 25000)
+  </script>
+</body>
+</html>

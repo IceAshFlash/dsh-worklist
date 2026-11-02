@@ -1,0 +1,7 @@
+# bin/worklist-open.vbs 是 UTF-16LE + CRLF：VBScript 按 GBK 解码 UTF-8 中文会吃掉
+# 字符串的收尾引号，报「未结束的字符串常量」。所以这个文件必须让 git 当二进制看待，
+# 不能被换行转换或 autocrlf 碰。
+* text=auto eol=lf
+*.vbs -text
+*.ico binary
+*.png binary

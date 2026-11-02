@@ -1,0 +1,14 @@
+# 依赖
+node_modules/
+
+# 运行时垃圾
+debug.log
+*.log
+
+# 测试与调试留下的数据（test/smoke.mjs 每次跑完都会写一份）
+.smoke-data-*.json
+.pick-*
+.shortcut-*.ps1
+
+# 分发包
+*.zip

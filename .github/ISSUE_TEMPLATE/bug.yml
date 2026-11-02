@@ -1,0 +1,49 @@
+name: 出问题了
+description: 界面、数据、安装三类问题都走这里
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 点了哪里、期望什么、实际什么。有截图直接拖进来。
+      placeholder: |
+        1. 打开「工作清单」
+        2. 新建工作，填了标题和两个步骤
+        3. 点「让 DSH 拆分」→ 转了很久，最后提示超时
+    validations:
+      required: true
+
+  - type: textarea
+    id: meta
+    attributes:
+      label: 版本信息
+      description: |
+        DSH 面板：打开 http://127.0.0.1:<gui 端口>/dsh-worklist-api/meta
+        独立窗口：打开 http://127.0.0.1:7419/api/meta
+        把返回的 JSON 原样贴进来。
+      render: json
+      placeholder: '{"ok":true,"version":"0.1.6","aiAvailable":true,"dataFile":"..."}'
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: 系统与 Node
+      placeholder: Windows 11 23H2 / Node 22.14.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: 在哪儿出的事
+      options:
+        - DSH 侧栏面板
+        - 桌面独立窗口
+        - Agent 工具 worklist
+        - 安装 / 启动
+        - 别的地方
+    validations:
+      required: true

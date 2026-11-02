@@ -1,0 +1,68 @@
+{
+  "name": "dsh-worklist",
+  "version": "0.1.6",
+  "type": "module",
+  "description": "工作清单：项目 → 分类 → 工作单项的三级看板，带加权进度与 DSH 侧栏面板，同一份数据还能脱离 DSH 单独打开。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/REPLACE-ME/dsh-worklist.git"
+  },
+  "homepage": "https://github.com/REPLACE-ME/dsh-worklist#readme",
+  "bugs": {
+    "url": "https://github.com/REPLACE-ME/dsh-worklist/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./core": "./core/store.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "bin": {
+    "worklist": "./bin/worklist.js"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "core/store.js",
+    "core/api.js",
+    "ui/app.js",
+    "ui/standalone.html",
+    "bin/worklist.js",
+    "bin/build.js",
+    "bin/worklist-open.vbs",
+    "bin/shortcut.js",
+    "bin/make-icon.js",
+    "bin/icon.ico",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "worklist",
+    "todo",
+    "progress"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0-rc.1",
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  }
+}
