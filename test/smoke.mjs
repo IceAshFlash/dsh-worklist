@@ -63,6 +63,10 @@ const stop = () => {
   try { child.kill() } catch { /* 已经退出 */ }
 }
 
+const projectOf = (state) => state.projects?.[0]
+const categoryById = (state, id) => (state.categories ?? []).find((item) => item.id === id)
+const ddlOf = (state, projectId) => (state.categories ?? []).find((item) => item.projectId === projectId && item.kind === 'ddl')
+
 try {
   const ready = await waitReady(8000)
   check('server 起来了', ready, ready ? `${BASE}` : serverLog.trim().slice(0, 300))
@@ -74,6 +78,14 @@ try {
   const project = await call('POST', '/projects', { title: '冒烟项目', path: os.tmpdir() })
   check('建项目', project.status === 201, `id=${project.payload.project?.id}`)
   const projectId = project.payload.project?.id
+
+  let state = (await call('GET', '/state')).payload.state
+  let names = (projectOf(state)?.categories ?? []).map((item) => item.title)
+  check('新项目自带四个分类', names.length === 4, names.join(' / '))
+  check('三个默认分类', names.includes('重要工作') && names.includes('一般工作') && names.includes('长期工作'))
+  const ddl = ddlOf(state, projectId)
+  check('有锁定的 DDL预警 分类', ddl?.locked === true && ddl?.title === 'DDL预警', `locked=${ddl?.locked}`)
+  check('默认预警时长 24 小时', projectOf(state)?.warnHours === 24, `warnHours=${projectOf(state)?.warnHours}`)
 
   const category = await call('POST', '/categories', { projectId, title: '开发' })
   check('建分类', category.status === 201, `id=${category.payload.category?.id}`)
@@ -92,22 +104,86 @@ try {
   check('建工作 + 三步', task.status === 201 && task.payload.task?.steps?.length === 3, `steps=${task.payload.task?.steps?.length}`)
   const taskId = task.payload.task?.id
 
-  let state = await call('GET', '/state')
-  const found = state.payload.state.projects?.[0]?.categories?.[0]?.tasks?.[0]
+  state = (await call('GET', '/state')).payload.state
+  const found = (categoryById(state, categoryId)?.tasks ?? [])[0]
   check('三级结构挂上了', Boolean(found) && found.steps.length === 3)
   check('权重进度 0%', found?.progress === 0, `progress=${found?.progress}`)
 
   const stepOne = found.steps[0]
   await call('PATCH', `/tasks/${taskId}/steps/${stepOne.id}`, { done: true })
-  state = await call('GET', '/state')
-  const afterOne = state.payload.state.projects?.[0]?.categories?.[0]?.tasks?.[0]
+  state = (await call('GET', '/state')).payload.state
+  const afterOne = (categoryById(state, categoryId)?.tasks ?? [])[0]
   check('完成 1/4 权重 → 0.25', afterOne?.progress === 0.25, `progress=${afterOne?.progress}`)
 
+  /* ---- DDL 预警：克隆、提前量 ---- */
+
+  const inTwoHours = new Date(Date.now() + 2 * 3600 * 1000).toISOString()
+  await call('PATCH', `/tasks/${taskId}`, { dueAt: inTwoHours })
+  state = (await call('GET', '/state')).payload.state
+  let ddlCategory = ddlOf(state, projectId)
+  check('撞线工作被克隆进 DDL预警', ddlCategory?.tasks?.length === 1, `tasks=${ddlCategory?.tasks?.length}`)
+  check('克隆指向原工作', ddlCategory?.tasks?.[0]?.cloneOf === taskId, `cloneOf=${ddlCategory?.tasks?.[0]?.cloneOf}`)
+  check('克隆不算进项目任务数', projectOf(state)?.taskCount === 1, `taskCount=${projectOf(state)?.taskCount}`)
+
+  const shorten = await call('PATCH', `/projects/${projectId}`, { warnHours: 1 })
+  check('调整预警时长 → 1 小时', shorten.status === 200 && shorten.payload.project?.warnHours === 1, `warnHours=${shorten.payload.project?.warnHours}`)
+  state = (await call('GET', '/state')).payload.state
+  ddlCategory = ddlOf(state, projectId)
+  check('2 小时后到期的被移出 1 小时窗口', ddlCategory?.tasks?.length === 0, `tasks=${ddlCategory?.tasks?.length}`)
+
+  const widen = await call('PATCH', `/projects/${projectId}`, { warnHours: 0 })
+  check('预警时长最小 1 小时', widen.payload.project?.warnHours === 1, `warnHours=${widen.payload.project?.warnHours}`)
+
+  /* ---- 逐条预警：每条工作可以有自己的提前量 ---- */
+
+  const ownWarn = await call('PATCH', `/tasks/${taskId}`, { warnHours: 6 })
+  check('给单条工作单独设 6 小时', ownWarn.status === 200 && ownWarn.payload.task?.warnHours === 6, `warnHours=${ownWarn.payload.task?.warnHours}`)
+  state = (await call('GET', '/state')).payload.state
+  ddlCategory = ddlOf(state, projectId)
+  check('单条预警盖过项目默认（重新进线）', ddlCategory?.tasks?.length === 1, `tasks=${ddlCategory?.tasks?.length}`)
+  const cloneOwn = ddlCategory?.tasks?.[0]
+  check('克隆带自己的预警时长', cloneOwn?.warnHours === 6 && cloneOwn?.warnOwn === true, `warnHours=${cloneOwn?.warnHours} warnOwn=${cloneOwn?.warnOwn}`)
+
+  const farOut = new Date(Date.now() + 30 * 3600 * 1000).toISOString()
+  const secondTask = await call('POST', '/tasks', { categoryId, title: '更远的一件事', dueAt: farOut, weight: 1 })
+  const secondId = secondTask.payload.task?.id
+  state = (await call('GET', '/state')).payload.state
+  check('30 小时后到期的默认不进线（项目默认 1 小时）', (ddlOf(state, projectId)?.tasks ?? []).length === 1, `tasks=${(ddlOf(state, projectId)?.tasks ?? []).length}`)
+
+  await call('PATCH', `/tasks/${secondId}`, { warnHours: 48 })
+  state = (await call('GET', '/state')).payload.state
+  ddlCategory = ddlOf(state, projectId)
+  const cloneIds = (ddlCategory?.tasks ?? []).map((item) => item.cloneOf).sort()
+  check('两条工作各按自己的分钟进线', cloneIds.length === 2 && cloneIds.includes(secondId), `cloneOf=${cloneIds.join(',')}`)
+  const hoursByTask = new Map((ddlCategory?.tasks ?? []).map((item) => [item.cloneOf, item.warnHours]))
+  check('同一条预警分类里两种提前量并存', hoursByTask.get(taskId) === 6 && hoursByTask.get(secondId) === 48, `${hoursByTask.get(taskId)}/${hoursByTask.get(secondId)}`)
+
+  const clearWarn = await call('PATCH', `/tasks/${taskId}`, { warnHours: null })
+  check('清空后回到跟随项目', clearWarn.payload.task?.warnHours === null, `warnHours=${String(clearWarn.payload.task?.warnHours)}`)
+  state = (await call('GET', '/state')).payload.state
+  ddlCategory = ddlOf(state, projectId)
+  check('回落后按项目默认移出', (ddlCategory?.tasks ?? []).map((item) => item.cloneOf).join(',') === secondId, `cloneOf=${(ddlCategory?.tasks ?? []).map((item) => item.cloneOf).join(',')}`)
+  const backTask = (categoryById(state, categoryId)?.tasks ?? []).find((item) => item.id === taskId)
+  check('回落后 warnOwn 变 false', backTask?.warnOwn === false && backTask?.warnHours === 1, `warnOwn=${backTask?.warnOwn} warnHours=${backTask?.warnHours}`)
+
+  await call('DELETE', `/tasks/${secondId}`)
+  state = (await call('GET', '/state')).payload.state
+  check('删掉第二条后只剩原工作', projectOf(state)?.taskCount === 1, `taskCount=${projectOf(state)?.taskCount}`)
+  ddlCategory = ddlOf(state, projectId)
+
+  const renameDdl = await call('PATCH', `/categories/${ddlCategory.id}`, { title: '改个名' })
+  check('DDL预警 不能改名', renameDdl.status === 409, `status=${renameDdl.status}`)
+  const deleteDdl = await call('DELETE', `/categories/${ddlCategory.id}`)
+  check('DDL预警 不能删除', deleteDdl.status === 409, `status=${deleteDdl.status}`)
+
+  const renameNormal = await call('PATCH', `/categories/${categoryId}`, { title: '开发（改名）' })
+  check('普通分类可以改名', renameNormal.status === 200, `title=${renameNormal.payload.category?.title}`)
+
   await call('PATCH', `/tasks/${taskId}`, { done: true })
-  state = await call('GET', '/state')
-  const doneTask = state.payload.state.projects?.[0]?.categories?.[0]?.tasks?.[0]
+  state = (await call('GET', '/state')).payload.state
+  const doneTask = (categoryById(state, categoryId)?.tasks ?? [])[0]
   check('整体勾完成 → 1', doneTask?.progress === 1, `progress=${doneTask?.progress}`)
-  check('项目进度跟上', state.payload.state.projects?.[0]?.progress === 1, `project=${state.payload.state.projects?.[0]?.progress}`)
+  check('项目进度跟上', projectOf(state)?.progress === 1, `project=${projectOf(state)?.progress}`)
 
   const noAi = await call('POST', '/ai-split', { title: '随便', steps: [] })
   check('独立模式没有 AI 拆分（明确拒绝）', noAi.status === 501, `status=${noAi.status} ${noAi.payload.error ?? ''}`)
@@ -120,8 +196,8 @@ try {
 
   const removed = await call('DELETE', `/projects/${projectId}`)
   check('删项目（级联）', removed.status === 200, `status=${removed.status}`)
-  state = await call('GET', '/state')
-  check('级联删干净', state.payload.state.projects?.length === 0)
+  state = (await call('GET', '/state')).payload.state
+  check('级联删干净', state.projects?.length === 0 && state.categories?.length === 0 && state.tasks?.length === 0)
 } catch (error) {
   failures += 1
   console.log(`FAIL 异常：${error.message}`)

@@ -10,7 +10,7 @@
  * 数据在 core/store.js，接口在 core/api.js，两边都不认识 DSH。
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -24,6 +24,7 @@ import {
   newId,
   read,
   resolveDataFile,
+  taskWarnHours,
   toTimestamp,
   toWeight,
 } from './core/store.js'
@@ -346,6 +347,10 @@ export function apply(ctx) {
       taskId: { type: 'string', description: 'Task id.' },
       weight: { type: 'number', description: 'Task weight (relative importance, default 1).' },
       dueAt: { type: 'string', description: 'Due date, ISO-8601 (e.g. 2026-11-08) or empty to clear.' },
+      warnHours: {
+        type: 'number',
+        description: 'Per-task warning lead time in hours (default: inherit the project default, usually 24).',
+      },
       note: { type: 'string', description: 'Free-form note on the task.' },
       done: { type: 'boolean', description: 'Mark the task (or the whole step list) done.' },
       steps: {
@@ -442,6 +447,7 @@ export function apply(ctx) {
               done: body.done === true,
               dueAt: toTimestamp(body.dueAt),
               note: String(body.note ?? ''),
+              warnHours: taskWarnHours(body.warnHours),
               steps,
               createdAt: Date.now(),
               updatedAt: Date.now(),
@@ -486,6 +492,7 @@ export function apply(ctx) {
             if (body.done !== undefined) task.done = body.done === true
             if (body.note !== undefined) task.note = String(body.note ?? '')
             if (body.dueAt !== undefined) task.dueAt = toTimestamp(body.dueAt)
+            if (body.warnHours !== undefined) task.warnHours = taskWarnHours(body.warnHours)
             task.updatedAt = Date.now()
             return task
           })

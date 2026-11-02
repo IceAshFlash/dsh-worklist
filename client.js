@@ -35,7 +35,7 @@ window.__ModuleLoader__.load({
   var STYLE_ID = 'wl-style' // ui-copy-ignore
 
   var CSS = [
-    '.wl-root{--wl-accent:#3f6be6;--wl-accent-hover:#3459c4;display:flex;height:100%;min-height:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--dsw-alias-label-primary,#1c1f24);background:var(--dsw-alias-bg-base,#fff);font-size:13px;line-height:1.5}',
+    '.wl-root{--wl-accent:#3f6be6;--wl-accent-hover:#3459c4;--wl-danger:#e5484d;display:flex;height:100%;min-height:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--dsw-alias-label-primary,#1c1f24);background:var(--dsw-alias-bg-base,#fff);font-size:13px;line-height:1.5}',
     '.wl-root *{box-sizing:border-box}',
     '.wl-side{width:232px;flex:0 0 232px;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--dsw-alias-border-l1,#e6e8eb);background:var(--dsw-alias-bg-layer-1,#fafbfc)}',
     '.wl-side-head{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 8px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#5b6470)}',
@@ -58,6 +58,14 @@ window.__ModuleLoader__.load({
     '.wl-cat-name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-cat-count{font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c);white-space:nowrap}',
     '.wl-cat-body{padding:4px 6px 8px}',
+    '.wl-cat.is-ddl{border-color:rgba(229,72,77,.35);border-color:color-mix(in srgb,var(--wl-danger) 38%,transparent)}',
+    '.wl-cat.is-ddl .wl-cat-head{background:rgba(229,72,77,.06);background:color-mix(in srgb,var(--wl-danger) 7%,transparent)}',
+    '.wl-cat.is-ddl .wl-cat-name{color:var(--wl-danger)}',
+    '.wl-cat.is-ddl .wl-cat-count{color:var(--wl-danger);opacity:.85}',
+    '.wl-cat-hint{font-size:11px;color:var(--wl-danger);opacity:.8;white-space:nowrap}',
+    '.wl-task.is-clone{cursor:default}',
+    '.wl-task.is-clone .wl-task-title{color:var(--dsw-alias-label-secondary,#5b6470)}',
+    '.wl-chip.is-warn{color:var(--wl-danger);border-color:rgba(229,72,77,.45);border-color:color-mix(in srgb,var(--wl-danger) 45%,transparent)}',
     '.wl-task{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px}',
     '.wl-task:hover{background:var(--dsw-alias-bg-layer-1,#f7f8fa)}',
     '.wl-check{width:16px;height:16px;flex:0 0 auto;border-radius:4px;border:1.5px solid var(--dsw-alias-border-l2,#c9ced6);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;color:#fff;font-size:11px;line-height:1}',
@@ -439,9 +447,26 @@ window.__ModuleLoader__.load({
       return scroll
     }
 
+    var hoursLabel = function (hours) {
+      var value = Number(hours)
+      if (!isFinite(value) || value <= 0) return '1小时'
+      if (value % 24 === 0) return (value / 24) + '天'
+      return value + '小时'
+    }
+
+    /** 克隆行显示"来自哪个分类"，方便一眼知道它原本在哪儿。 */
+    var originTitle = function (task) {
+      if (!task.cloneOf || view.data === null) return ''
+      var real = (view.data.tasks || []).filter(function (item) { return item.id === task.cloneOf })[0]
+      if (!real) return ''
+      var home = (view.data.categories || []).filter(function (item) { return item.id === real.categoryId })[0]
+      return home ? home.title : ''
+    }
+
     var renderCategory = function (project, category) {
+      var isDdl = category.kind === 'ddl'
       var open = view.expanded[category.id] !== false
-      var box = h('div', { class: 'wl-cat' })
+      var box = h('div', { class: 'wl-cat' + (isDdl ? ' is-ddl' : '') })
       var head = h('div', { class: 'wl-cat-head' },
         h('button', {
           class: 'wl-icon',
@@ -453,27 +478,39 @@ window.__ModuleLoader__.load({
           },
         }, open ? '▾' : '▸'),
         h('span', { class: 'wl-dot', style: { background: category.color } }),
-        h('span', { class: 'wl-cat-name', text: category.title, title: category.title }),
+        h('span', { class: 'wl-cat-name', text: category.title, title: isDdl ? '自动收录撞上预警线的工作，不能改名或删除' : category.title }),
+        isDdl ? h('span', { class: 'wl-cat-hint', text: '自动收录' }) : null,
         bar(category.progress, '64px'),
         h('span', { class: 'wl-cat-count', text: pct(category.progress) + ' · ' + category.openCount + '/' + category.taskCount }),
-        h('span', { class: 'wl-grow' }),
-        h('button', {
+        h('span', { class: 'wl-grow' })
+      )
+      if (isDdl) {
+        head.appendChild(h('button', {
+          class: 'wl-btn',
+          title: '项目默认提前多久预警；每条工作可以在编辑窗口里单独设（默认 1 天，最小 1 小时）',
+          onclick: function (event) {
+            event.stopPropagation()
+            openWarnModal(project)
+          },
+        }, '默认预警 · ' + hoursLabel(category.warnHours)))
+      } else {
+        head.appendChild(h('button', {
           class: 'wl-icon',
           title: '在这个分类下新建工作',
           onclick: function (event) {
             event.stopPropagation()
             openTaskModal(null, category)
           },
-        }, '＋'),
-        h('button', {
+        }, '＋'))
+        head.appendChild(h('button', {
           class: 'wl-icon',
           title: '重命名分类',
           onclick: function (event) {
             event.stopPropagation()
             openCategoryModal(project, category)
           },
-        }, '✎')
-      )
+        }, '✎'))
+      }
       head.addEventListener('click', function () {
         view.expanded[category.id] = !open
         render()
@@ -483,7 +520,11 @@ window.__ModuleLoader__.load({
 
       var body = h('div', { class: 'wl-cat-body' })
       if (category.tasks.length === 0) {
-        body.appendChild(h('div', { class: 'wl-hint', style: { padding: '6px 10px 8px' }, text: '这个分类下还没有工作。' }))
+        body.appendChild(h('div', {
+          class: 'wl-hint',
+          style: { padding: '6px 10px 8px' },
+          text: isDdl ? '暂时没有撞上预警线的工作。' : '这个分类下还没有工作。',
+        }))
       }
       category.tasks.forEach(function (task) {
         body.appendChild(renderTask(category, task))
@@ -494,9 +535,12 @@ window.__ModuleLoader__.load({
 
     var renderTask = function (category, task) {
       var done = task.progress >= 1
-      var expanded = view.expanded['t:' + task.id] === true
+      // DDL预警里的行是克隆：勾它等于勾原来那条工作，编辑则跳回原来那条。
+      var realId = task.cloneOf || task.id
+      var isClone = Boolean(task.cloneOf)
+      var expanded = view.expanded['t:' + realId] === true
       var wrap = h('div')
-      var row = h('div', { class: 'wl-task' + (done ? ' is-done' : '') },
+      var row = h('div', { class: 'wl-task' + (done ? ' is-done' : '') + (isClone ? ' is-clone' : '') },
         h('button', {
           class: 'wl-check' + (done ? ' is-on' : ''),
           title: done ? '标记为未完成' : '标记为完成',
@@ -509,7 +553,7 @@ window.__ModuleLoader__.load({
                 return { id: step.id, title: step.title, weight: step.weight, done: nextDone }
               })
             }
-            request('PATCH', '/tasks/' + encodeURIComponent(task.id), patch)
+            request('PATCH', '/tasks/' + encodeURIComponent(realId), patch)
               .then(function () { return refresh() })
               .catch(function (error) { notifyError(error) })
           },
@@ -520,15 +564,17 @@ window.__ModuleLoader__.load({
           title: task.title + (task.note !== '' ? '\n' + task.note : ''),
           onclick: function (event) {
             event.stopPropagation()
-            view.expanded['t:' + task.id] = !expanded
+            view.expanded['t:' + realId] = !expanded
             render()
           },
         }),
+        isClone && originTitle(task) !== '' ? h('span', { class: 'wl-chip', text: '来自 ' + originTitle(task) }) : null,
+        task.warnOwn ? h('span', { class: 'wl-chip is-warn', text: '预警 ' + hoursLabel(task.warnHours) }) : null,
         task.steps.length > 0 ? h('span', { class: 'wl-chip', text: task.steps.filter(function (s) { return s.done }).length + '/' + task.steps.length }) : null,
         h('span', { class: 'wl-chip', text: 'w' + task.weight }),
         dueChip(task),
         bar(task.progress, '56px'),
-        h('button', {
+        isClone ? null : h('button', {
           class: 'wl-icon',
           title: '编辑',
           onclick: function (event) {
@@ -545,7 +591,7 @@ window.__ModuleLoader__.load({
           steps.appendChild(h('div', { class: 'wl-hint', style: { padding: '2px 0 4px' }, text: task.note }))
         }
         if (task.steps.length === 0) {
-          steps.appendChild(h('div', { class: 'wl-hint', text: '还没有拆分步骤：点右侧 ✎ 可以手动写，也可以让 DSH 拆。' }))
+          steps.appendChild(h('div', { class: 'wl-hint', text: isClone ? '这条工作在预警分类里只是副本，去原分类加步骤。' : '还没有拆分步骤：点右侧 ✎ 可以手动写，也可以让 DSH 拆。' }))
         }
         task.steps.forEach(function (step) {
           steps.appendChild(h('div', { class: 'wl-step' + (step.done ? ' is-done' : '') },
@@ -553,7 +599,7 @@ window.__ModuleLoader__.load({
               class: 'wl-check' + (step.done ? ' is-on' : ''),
               style: { width: '14px', height: '14px' },
               onclick: function () {
-                request('PATCH', '/tasks/' + encodeURIComponent(task.id) + '/steps/' + encodeURIComponent(step.id), { done: !step.done })
+                request('PATCH', '/tasks/' + encodeURIComponent(realId) + '/steps/' + encodeURIComponent(step.id), { done: !step.done })
                   .then(function () { return refresh() })
                   .catch(function (error) { notifyError(error) })
               },
@@ -725,11 +771,53 @@ window.__ModuleLoader__.load({
       var noteInput = h('textarea', { class: 'wl-textarea', placeholder: '备注（可选）' })
       noteInput.value = isEdit ? task.note : ''
 
+      /* 预警时长：默认跟项目走，也可以只给这条工作另设一个。 */
+      var projectOfCategory = function (id) {
+        var list = view.data === null ? [] : view.data.projects
+        for (var i = 0; i < list.length; i += 1) {
+          if (list[i].categories.some(function (item) { return item.id === id })) return list[i]
+        }
+        return null
+      }
+      var projectDefaultHours = function (id) {
+        var owner = projectOfCategory(id)
+        var hours = owner === null ? null : Number(owner.warnHours)
+        return isFinite(hours) && hours > 0 ? hours : 24
+      }
       var categorySelect = h('select', { class: 'wl-select' })
+      var warnMode = isEdit && task.warnOwn ? 'custom' : 'inherit'
+      var warnInput = h('input', {
+        class: 'wl-input',
+        type: 'number',
+        min: '1',
+        max: '720',
+        step: '1',
+        style: { maxWidth: '96px' },
+        value: String(isEdit && task.warnOwn ? task.warnHours : projectDefaultHours(categoryId)),
+      })
+      var inheritChip = h('button', { class: 'wl-btn', type: 'button' }, '')
+      var customChip = h('button', { class: 'wl-btn', type: 'button' }, '单独设置')
+      var warnHint = h('div', { class: 'wl-hint', text: '' })
+      var syncWarn = function () {
+        var custom = warnMode === 'custom'
+        inheritChip.className = 'wl-btn' + (custom ? '' : ' is-primary')
+        customChip.className = 'wl-btn' + (custom ? ' is-primary' : '')
+        inheritChip.textContent = '跟随项目 · ' + hoursLabel(projectDefaultHours(categorySelect.value))
+        warnInput.disabled = !custom
+        warnHint.className = 'wl-hint'
+        warnHint.textContent = custom
+          ? '这项工作按自己设的提前量进「DDL预警」；填 0 或留空则回到跟随项目。'
+          : '和项目默认一致：提前 ' + hoursLabel(projectDefaultHours(categorySelect.value)) + ' 开始预警。'
+      }
+      inheritChip.addEventListener('click', function () { warnMode = 'inherit'; syncWarn() })
+      customChip.addEventListener('click', function () { warnMode = 'custom'; syncWarn() })
+      categorySelect.addEventListener('change', syncWarn)
+
       projects.forEach(function (project) {
         var group = document.createElement('optgroup')
         group.label = project.title
         project.categories.forEach(function (item) {
+          if (item.kind === 'ddl') return // 预警分类只放克隆，不能往里塞真工作
           var option = document.createElement('option')
           option.value = item.id
           option.textContent = item.title
@@ -844,6 +932,7 @@ window.__ModuleLoader__.load({
           weight: Number.isFinite(weight) && weight > 0 ? weight : 1,
           dueAt: parseDateInput(dueInput.value),
           note: noteInput.value.trim(),
+          warnHours: warnMode === 'custom' ? (Number(warnInput.value) > 0 ? Number(warnInput.value) : null) : null,
           steps: steps
             .filter(function (step) { return step.title.trim() !== '' })
             .map(function (step) { return { id: step.id, title: step.title.trim(), weight: step.weight, done: step.done === true } }),
@@ -906,6 +995,14 @@ window.__ModuleLoader__.load({
             )
           ),
           h('div', { class: 'wl-field' },
+            h('span', { class: 'wl-label', text: '预警' }),
+            h('div', { class: 'wl-row', style: { alignItems: 'center' } },
+              h('div', { class: 'wl-chips', style: { margin: '0' } }, inheritChip, customChip),
+              warnInput
+            ),
+            warnHint
+          ),
+          h('div', { class: 'wl-field' },
             h('span', { class: 'wl-label', text: '备注' }),
             noteInput
           ),
@@ -926,6 +1023,7 @@ window.__ModuleLoader__.load({
         )
       )
       openMask(win)
+      syncWarn()
       titleInput.focus()
     }
 
@@ -1093,6 +1191,59 @@ window.__ModuleLoader__.load({
         )
       ))
       titleInput.focus()
+    }
+
+    /* ---------------- 二级窗口（DDL 预警时间） ---------------- */
+
+    var openWarnModal = function (project) {
+      var current = Number(project.warnHours)
+      if (!isFinite(current) || current <= 0) current = 24
+      var input = h('input', { class: 'wl-input', type: 'number', min: '1', max: '720', step: '1', value: String(current) })
+      var hint = h('div', { class: 'wl-hint', text: '项目默认提前多少小时预警。每条工作可以在编辑窗口里单独设一个；没单独设的就跟这里走。' })
+      var presets = [1, 6, 12, 24, 48, 72, 168]
+      var chips = h('div', { class: 'wl-chips' }, presets.map(function (hours) {
+        return h('button', {
+          class: 'wl-btn',
+          type: 'button',
+          onclick: function () { input.value = String(hours) },
+        }, hoursLabel(hours))
+      }))
+
+      var save = function () {
+        var hours = Math.round(Number(input.value))
+        if (!isFinite(hours) || hours < 1) {
+          hint.className = 'wl-hint is-error'
+          hint.textContent = '最少 1 小时。'
+          return
+        }
+        request('PATCH', '/projects/' + encodeURIComponent(project.id), { warnHours: hours })
+          .then(function () { closeModal(); return refresh() })
+          .catch(function (error) { notifyError(error) })
+      }
+
+      openMask(h('div', { class: 'wl-win' },
+        h('div', { class: 'wl-win-head' },
+          h('span', { text: '项目默认预警时间' }),
+          h('span', { class: 'wl-grow' }),
+          h('button', { class: 'wl-icon', onclick: closeModal }, '×')
+        ),
+        h('div', { class: 'wl-win-body' },
+          h('div', { class: 'wl-field' },
+            h('span', { class: 'wl-label', text: '提前量（小时）' }),
+            input
+          ),
+          chips,
+          hint,
+          h('div', { class: 'wl-hint', text: '当前：' + hoursLabel(current) + '，作为这个项目里没单独设置的工作的默认值。' })
+        ),
+        h('div', { class: 'wl-win-foot' },
+          h('span', { class: 'wl-grow' }),
+          h('button', { class: 'wl-btn', onclick: closeModal }, '取消'),
+          h('button', { class: 'wl-btn is-primary', onclick: save }, '保存')
+        )
+      ))
+      input.focus()
+      input.select()
     }
 
     var onKey = function (event) {

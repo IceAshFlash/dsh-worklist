@@ -35,15 +35,53 @@ plugin_manager({ action: 'install_bundle', target: 'C:\\path\\to\\dsh-worklist' 
 ## 数据模型
 
 ```
-project { id, title, path, color, createdAt }
-  category { id, projectId, title, color, order }
-    task { id, categoryId, title, weight, done, dueAt, steps[], createdAt, updatedAt }
+project { id, title, path, color, warnHours, scaffold, createdAt }
+  category { id, projectId, title, color, order, kind: normal|ddl, locked }
+    task { id, categoryId, title, weight, done, dueAt, warnHours, steps[], createdAt, updatedAt }
       step { id, title, weight, done }
 ```
 
 进度按权重算，不按条数：`task.progress = Σ(step.weight × done) / Σ(step.weight)`，
 没有步骤的工作就是 done/1；分类和项目的进度是下属工作的加权平均。
 `dueState` 分 overdue / today / soon(≤3 天) / later / none，列表按 DDL 升序、过期的置顶。
+
+### 新项目自带的分类
+
+新建项目时自动生成四个分类：
+
+| 分类 | 能不能改 | 说明 |
+| --- | --- | --- |
+| 重要工作 / 一般工作 / 长期工作 | 可改名、可删除 | 普通分类，随手用 |
+| **DDL预警** | **不能改名、不能删除**（接口回 409） | 自动收录撞上预警线的工作 |
+
+DDL预警 里的条目是**克隆**：`id = "ddl:" + 原工作 id`、带 `cloneOf` 字段。
+它只用于展示和快速勾选，真实数据还是原来那条工作——在预警分类里勾掉一条，原分类里那条也会一起完成；
+项目的进度和任务数统计**不把克隆算进去**，同一件事不会被算两遍。
+
+预警是**逐条**算的，不是整个项目共用一个刻度：
+
+| 层级 | 字段 | 说明 |
+| --- | --- | --- |
+| 工作 | `task.warnHours` | 这条工作自己的提前量；`null` = 跟随项目默认 |
+| 项目 | `project.warnHours` | 兜底默认值（新建项目 24 小时） |
+
+判定用「生效值」：`taskWarnHours(task.warnHours) ?? project.warnHours`，然后
+`dueAt - now <= 生效值 × 3600 × 1000`（含已逾期）；已完成的工作不进预警分类。
+
+面板里改两处：工作编辑窗口的「预警」一栏可以选 **跟随项目** 或 **单独设置**（1–720 小时）；
+DDL预警 分类头上的「默认预警 · 1天」按钮改的是项目默认值，只影响没单独设置的那些工作。
+接口对应：
+
+```
+PATCH /api/tasks/{id}     { "warnHours": 6 }     // 单独设置
+PATCH /api/tasks/{id}     { "warnHours": null }  // 回到跟随项目
+PATCH /api/projects/{id}  { "warnHours": 1 }     // 改项目默认
+```
+
+同一条 DDL预警 分类里可以同时躺着 6 小时、48 小时、按项目默认的三种工作——
+每条按自己的线进线出场，`cloneOf` 字段里的克隆会带上它自己的 `warnHours` 和 `warnOwn`。
+
+老数据（0.1.x 建的）第一次读进来会补一次这四个分类，之后再删默认分类就不会反复冒出来。
 
 ## 选文件夹
 

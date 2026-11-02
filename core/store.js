@@ -26,6 +26,41 @@ export const PALETTE = [
   '#6E7A8A',
 ]
 
+/**
+ * 新项目默认带的三个分类。用户可以改名、删除。
+ * `DDL预警` 是特殊分类：用户不能改它的名字、也不能删，
+ * 里面放的不是"真的工作"，而是项目里撞上预警线的工作的克隆（见 decorate）。
+ */
+export const DEFAULT_CATEGORIES = [
+  { title: '重要工作', color: PALETTE[0] },
+  { title: '一般工作', color: PALETTE[1] },
+  { title: '长期工作', color: PALETTE[4] },
+]
+
+export const DDL_CATEGORY_TITLE = 'DDL预警'
+export const DDL_CATEGORY_COLOR = '#E5484D'
+
+/** DDL 预警提前量：默认一天，最小一小时。 */
+export const DEFAULT_WARN_HOURS = 24
+export const MIN_WARN_HOURS = 1
+export const MAX_WARN_HOURS = 24 * 30
+
+export const clampWarnHours = (value) => {
+  const n = toNumber(value, DEFAULT_WARN_HOURS)
+  return Math.round(Math.min(MAX_WARN_HOURS, Math.max(MIN_WARN_HOURS, n)))
+}
+
+/**
+ * 单条工作自己的预警时长。没设（或设成空）就返回 null，意思是"跟随项目默认"。
+ * 这是 0.3.0 加的：预警从"整个项目一个刻度"细化成"每条工作可以不一样"。
+ */
+export const taskWarnHours = (value) => {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return Math.round(Math.min(MAX_WARN_HOURS, Math.max(MIN_WARN_HOURS, n)))
+}
+
 export const resolveDataFile = (explicit) => {
   if (typeof explicit === 'string' && explicit.trim() !== '') return path.resolve(explicit.trim())
   const home = typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME.trim() !== ''
@@ -123,20 +158,36 @@ export const dueState = (dueAt, now = Date.now()) => {
   return { kind: 'later', days }
 }
 
+/** 这条工作是不是已经进了预警窗口（含已逾期）。 */
+export const isWarning = (task, warnHours, now = Date.now()) => {
+  if (!Number.isFinite(task?.dueAt)) return false
+  return task.dueAt - now <= warnHours * 3600000
+}
+
 /**
  * 读一遍数据、补上算出来的字段（进度、DDL 状态、排序）。
  * 面板拿到的东西全在这里成型，前端不再算业务。
  */
 export const decorate = (state, now = Date.now()) => {
+  const projectsRaw = state.projects ?? []
+  const categoriesRaw = state.categories ?? []
+  const projectById = new Map(projectsRaw.map((item) => [item.id, item]))
+  const projectIdByCategory = new Map(categoriesRaw.map((item) => [item.id, item.projectId]))
+  const defaultWarnOf = (categoryId) => clampWarnHours(projectById.get(projectIdByCategory.get(categoryId))?.warnHours)
+
   const tasks = (state.tasks ?? []).map((task) => {
     const progress = taskProgress(task)
     const due = dueState(task.dueAt, now)
+    const ownWarn = taskWarnHours(task.warnHours)
     return {
       ...task,
       progress,
       due: due.kind,
       daysLeft: due.days,
       completed: progress >= 1,
+      // 这条工作实际按多少小时预警：自己设了就用自己的，否则跟项目默认。
+      warnHours: ownWarn ?? defaultWarnOf(task.categoryId),
+      warnOwn: ownWarn !== null,
     }
   })
 
@@ -147,13 +198,43 @@ export const decorate = (state, now = Date.now()) => {
     else list.push(task)
   }
 
-  const categories = (state.categories ?? []).map((category) => {
-    const own = byCategory.get(category.id) ?? []
+  /*
+   * DDL预警分类里放的是"克隆"：项目里所有撞上预警线（含已逾期）、还没做完的工作，
+   * 复制一份塞进这个分类。克隆只用于展示和快速勾选，真实数据仍然是原来那条工作。
+   * 所以项目进度、任务数统计都要把 DDL预警 这一层排除掉，否则同一件事会被算两遍。
+   * 预警线是逐条算的：每条工作用它自己的 warnHours（没设就回落到项目默认）。
+   */
+  const sourceCategories = categoriesRaw
+  const clonesByCategory = new Map()
+  for (const category of sourceCategories) {
+    if (category.kind !== 'ddl') continue
+    const sources = new Set(
+      sourceCategories
+        .filter((item) => item.projectId === category.projectId && item.kind !== 'ddl')
+        .map((item) => item.id),
+    )
+    const hits = tasks
+      .filter((task) => sources.has(task.categoryId) && task.progress < 1 && isWarning(task, task.warnHours, now))
+      .sort((a, b) => a.dueAt - b.dueAt)
+      .map((task) => ({
+        ...task,
+        id: 'ddl:' + task.id,
+        cloneOf: task.id,
+        categoryId: category.id,
+        warning: true,
+      }))
+    clonesByCategory.set(category.id, hits)
+  }
+
+  const categories = sourceCategories.map((category) => {
+    const isDdl = category.kind === 'ddl'
+    const own = isDdl ? (clonesByCategory.get(category.id) ?? []) : (byCategory.get(category.id) ?? [])
     const progress = weightedAverage(own.map((task) => ({ weight: task.weight, progress: task.progress })))
     const dueAt = own.reduce((min, task) => {
       if (!Number.isFinite(task.dueAt)) return min
       return min === null || task.dueAt < min ? task.dueAt : min
     }, null)
+    const warnHours = clampWarnHours(projectsRaw.find((item) => item.id === category.projectId)?.warnHours)
     return {
       ...category,
       progress,
@@ -161,6 +242,7 @@ export const decorate = (state, now = Date.now()) => {
       openCount: own.filter((task) => task.progress < 1).length,
       dueAt,
       due: dueState(dueAt, now).kind,
+      warnHours: isDdl ? warnHours : null,
       tasks: own.sort(sortTasks),
     }
   })
@@ -172,18 +254,23 @@ export const decorate = (state, now = Date.now()) => {
     else list.push(category)
   }
 
-  const projects = (state.projects ?? []).map((project) => {
-    const own = byProject.get(project.id) ?? []
+  const projects = projectsRaw.map((project) => {
+    const own = (byProject.get(project.id) ?? []).filter((category) => category.kind !== 'ddl')
     const allTasks = own.flatMap((category) => category.tasks)
     const progress = weightedAverage(allTasks.map((task) => ({ weight: task.weight, progress: task.progress })))
     const dueAt = own.reduce((min, category) => {
       if (!Number.isFinite(category.dueAt)) return min
       return min === null || category.dueAt < min ? category.dueAt : min
     }, null)
+    const ddl = (byProject.get(project.id) ?? []).find((category) => category.kind === 'ddl')
     return {
       ...project,
+      warnHours: clampWarnHours(project.warnHours),
       progress,
-      categories: own.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.createdAt - b.createdAt),
+      // DDL预警 排在最后（order 90）；它不参与项目进度，但要显示出来。
+      categories: (byProject.get(project.id) ?? []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.createdAt - b.createdAt),
+      ddlCategoryId: ddl?.id ?? null,
+      warningCount: ddl?.taskCount ?? 0,
       taskCount: allTasks.length,
       openCount: allTasks.filter((task) => task.progress < 1).length,
       dueAt,
@@ -246,6 +333,8 @@ const sanitizeTask = (raw) => {
     done: task.done === true,
     dueAt: toTimestamp(task.dueAt),
     note: str(task.note),
+    // null = 跟随项目默认；数字 = 这条工作自己的预警时长。
+    warnHours: taskWarnHours(task.warnHours),
     steps: Array.isArray(task.steps) ? task.steps.map(sanitizeStep) : [],
     createdAt,
     updatedAt: toTimestamp(task.updatedAt) ?? createdAt,
@@ -254,11 +343,15 @@ const sanitizeTask = (raw) => {
 
 const sanitizeCategory = (raw) => {
   const category = raw !== null && typeof raw === 'object' ? raw : {}
+  const kind = category.kind === 'ddl' ? 'ddl' : 'normal'
   return {
     id: str(category.id) || newId('ct'),
     projectId: str(category.projectId),
-    title: str(category.title).trim() || '未命名分类',
-    color: str(category.color) || PALETTE[0],
+    title: kind === 'ddl' ? DDL_CATEGORY_TITLE : str(category.title).trim() || '未命名分类',
+    color: kind === 'ddl' ? DDL_CATEGORY_COLOR : str(category.color) || PALETTE[0],
+    // DDL预警是系统分类：名字和存在都不由用户决定。
+    kind,
+    locked: kind === 'ddl',
     order: toNumber(category.order, 0),
     collapsed: category.collapsed === true,
     createdAt: toTimestamp(category.createdAt) ?? Date.now(),
@@ -273,8 +366,42 @@ const sanitizeProject = (raw) => {
     path: str(project.path),
     color: str(project.color) || PALETTE[0],
     note: str(project.note),
+    warnHours: clampWarnHours(project.warnHours),
+    // 脚手架版本：2 = 已经有三个默认分类 + DDL预警。老数据靠它补一次，补完就不再补，
+    // 这样用户把默认分类删光也不会每次加载又冒出来。
+    scaffold: toNumber(project.scaffold, 0),
     createdAt: toTimestamp(project.createdAt) ?? Date.now(),
   }
+}
+
+/**
+ * 新项目自带的分类：重要工作 / 一般工作 / 长期工作（都能改名、删除），
+ * 外加一个锁定的 DDL预警（不能改名、不能删，内容是撞线工作的克隆）。
+ */
+export const buildProjectCategories = (projectId, now = Date.now()) => {
+  const rows = DEFAULT_CATEGORIES.map((item, index) => ({
+    id: newId('ct'),
+    projectId,
+    title: item.title,
+    color: item.color,
+    kind: 'normal',
+    locked: false,
+    order: index,
+    collapsed: false,
+    createdAt: now,
+  }))
+  rows.push({
+    id: newId('ct'),
+    projectId,
+    title: DDL_CATEGORY_TITLE,
+    color: DDL_CATEGORY_COLOR,
+    kind: 'ddl',
+    locked: true,
+    order: 90,
+    collapsed: false,
+    createdAt: now,
+  })
+  return rows
 }
 
 export const sanitizeState = (raw) => {
@@ -284,6 +411,42 @@ export const sanitizeState = (raw) => {
     .filter((category) => projects.some((project) => project.id === category.projectId))
   const tasks = (Array.isArray(state.tasks) ? state.tasks.map(sanitizeTask) : [])
     .filter((task) => categories.some((category) => category.id === task.categoryId))
+
+  // 老项目补一次脚手架：没有任何分类的补齐三个默认分类，任何项目缺 DDL预警 的补上。
+  // 补齐后写进 scaffold=2，用户以后再删就不会反复冒出来。
+  for (const project of projects) {
+    const own = categories.filter((category) => category.projectId === project.id)
+    if (own.length === 0 && project.scaffold < 2) {
+      DEFAULT_CATEGORIES.forEach((item, index) => {
+        categories.push({
+          id: `ct_${project.id}_d${index}`,
+          projectId: project.id,
+          title: item.title,
+          color: item.color,
+          kind: 'normal',
+          locked: false,
+          order: index,
+          collapsed: false,
+          createdAt: project.createdAt,
+        })
+      })
+    }
+    if (!own.some((category) => category.kind === 'ddl')) {
+      categories.push({
+        id: `ct_${project.id}_ddl`,
+        projectId: project.id,
+        title: DDL_CATEGORY_TITLE,
+        color: DDL_CATEGORY_COLOR,
+        kind: 'ddl',
+        locked: true,
+        order: 90,
+        collapsed: false,
+        createdAt: project.createdAt,
+      })
+    }
+    project.scaffold = 2
+  }
+
   return {
     version: SCHEMA_VERSION,
     updatedAt: toNumber(state.updatedAt, 0),

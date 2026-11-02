@@ -15,10 +15,13 @@ import { spawn } from 'node:child_process'
 
 import {
   PALETTE,
+  buildProjectCategories,
+  clampWarnHours,
   decorate,
   mutate,
   newId,
   read,
+  taskWarnHours,
   toTimestamp,
   toWeight,
 } from './store.js'
@@ -62,15 +65,20 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
   /* ---------------- projects ---------------- */
 
   const addProject = (body) => mutate(file, (state) => {
+    const createdAt = now()
     const project = {
       id: newId('pj'),
       title: requireText(body.title, '项目名'),
       path: text(body.path),
       color: text(body.color) || PALETTE[state.projects.length % PALETTE.length],
       note: text(body.note),
-      createdAt: now(),
+      warnHours: clampWarnHours(body.warnHours),
+      scaffold: 2,
+      createdAt,
     }
     state.projects.push(project)
+    // 新项目自带：重要工作 / 一般工作 / 长期工作 + 锁定的 DDL预警。
+    state.categories.push(...buildProjectCategories(project.id, createdAt))
     return project
   })
 
@@ -107,7 +115,9 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
 
   const addTask = (body) => mutate(file, (state) => {
     const categoryId = requireText(body.categoryId, 'categoryId')
-    if (!state.categories.some((category) => category.id === categoryId)) throw missing('分类不存在')
+    const parentCategory = state.categories.find((category) => category.id === categoryId)
+    if (parentCategory === undefined) throw missing('分类不存在')
+    if (parentCategory.kind === 'ddl') throw bad('DDL预警分类只放自动收录的克隆，不能直接往里加工作')
     const task = {
       id: newId('tk'),
       categoryId,
@@ -116,6 +126,7 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
       done: false,
       dueAt: toTimestamp(body.dueAt),
       note: text(body.note),
+      warnHours: taskWarnHours(body.warnHours),
       steps: buildSteps(body.steps),
       createdAt: now(),
       updatedAt: now(),
@@ -141,9 +152,13 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
     }
     if (body.note !== undefined) task.note = text(body.note)
     if (body.dueAt !== undefined) task.dueAt = toTimestamp(body.dueAt)
+    // 传 null / 空串 = 回到"跟随项目默认"。
+    if (body.warnHours !== undefined) task.warnHours = taskWarnHours(body.warnHours)
     if (body.categoryId !== undefined) {
       const categoryId = requireText(body.categoryId, 'categoryId')
-      if (!state.categories.some((category) => category.id === categoryId)) throw missing('分类不存在')
+      const target = state.categories.find((category) => category.id === categoryId)
+      if (target === undefined) throw missing('分类不存在')
+      if (target.kind === 'ddl') throw bad('DDL预警分类只放自动收录的克隆，工作不能移进去')
       task.categoryId = categoryId
     }
     if (Array.isArray(body.steps)) {
@@ -416,6 +431,7 @@ $owner.Close()
           if (body.path !== undefined) project.path = text(body.path)
           if (body.color !== undefined) project.color = text(body.color) || project.color
           if (body.note !== undefined) project.note = text(body.note)
+          if (body.warnHours !== undefined) project.warnHours = clampWarnHours(body.warnHours)
           return project
         }),
       },
@@ -445,6 +461,7 @@ $owner.Close()
         category: await mutate(file, (state) => {
           const category = state.categories.find((item) => item.id === params[0])
           if (category === undefined) throw missing('分类不存在')
+          if (category.locked === true) throw new ApiError(409, 'DDL预警分类是自动维护的，不能改名')
           if (body.title !== undefined) category.title = requireText(body.title, '分类名')
           if (body.color !== undefined) category.color = text(body.color) || category.color
           if (body.collapsed !== undefined) category.collapsed = body.collapsed === true
@@ -459,7 +476,9 @@ $owner.Close()
         ok: true,
         removed: await mutate(file, (state) => {
           const id = params[0]
-          if (!state.categories.some((item) => item.id === id)) throw missing('分类不存在')
+          const category = state.categories.find((item) => item.id === id)
+          if (category === undefined) throw missing('分类不存在')
+          if (category.locked === true) throw new ApiError(409, 'DDL预警分类是自动维护的，不能删除')
           const tasks = state.tasks.filter((task) => task.categoryId === id).length
           state.categories = state.categories.filter((item) => item.id !== id)
           state.tasks = state.tasks.filter((task) => task.categoryId !== id)
