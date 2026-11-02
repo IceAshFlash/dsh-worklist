@@ -11,6 +11,27 @@
 两边共用 `$DSH_HOME/state/dsh-worklist.json`（本机 = `C:\Users\MX\.dsh\state\dsh-worklist.json`），
 所以在独立窗口里改完，回到 DSH 刷新面板就能看见。
 
+## 装到别人的机器上
+
+**只用独立窗口**（完全不需要 DSH，零依赖）：
+
+```bash
+node bin/worklist.js serve --open     # 在当前目录跑
+npm i -g dsh-worklist && worklist serve --open   # 装成全局命令
+```
+
+要求 **Node 22+**、**Windows**（桌面快捷方式靠 `.vbs`，选目录对话框靠 PowerShell 的
+`FolderBrowserDialog`；mac / Linux 上界面能开，但这两处会退化）。
+
+**当 DSH 插件用**：把 `install_bundle` 的 `target` 指向**包目录的绝对路径**（clone 下来的那个）：
+
+```javascript
+plugin_manager({ action: 'install_bundle', target: 'C:\\path\\to\\dsh-worklist' })
+```
+
+装完刷新页面，侧栏出「工作清单」。之后改了代码，用 `set_bundle { enabled: true }` 重新 apply 即可
+（`link:` 装法，不需要重装）；改的是 `ui/app.js` 要先跑一次 `bin/build.js`。
+
 ## 数据模型
 
 ```
@@ -64,7 +85,8 @@ ui/standalone.html    独立模式的外壳，补一套 --dsw-alias-* 变量（�
 test/smoke.mjs        端到端冒烟：14 项断言
 ```
 
-**改完 `ui/app.js` 必须跑 `node bin/build.js`**，`client.js` 是生成物（43981 字节），别手改。
+**改完 `ui/app.js` 必须跑 `node bin/build.js`**，`client.js` 是生成物（大小随界面变，别记数字），
+直接手改会被下一次构建覆盖。仓库里提交生成物，是为了 clone 下来不用先构建就能装。
 
 ## 接口
 
