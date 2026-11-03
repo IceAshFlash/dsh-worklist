@@ -109,6 +109,43 @@ PATCH /api/categories/{id}  { "pinned": true }
 PATCH /api/tasks/{id}       { "pinned": true }
 ```
 
+## 分类文件夹与记录文件
+
+项目填了文件夹（`project.path`）时，**新建分类会顺手在项目文件夹里建一个同名文件夹**，
+里面放一个同名 `.txt` 当流水账：
+
+```
+D:\work\我的项目\          ← project.path
+├── 重要工作\ 重要工作.txt
+├── 开发\ 开发.txt        ← 新建分类「开发」时自动出现
+└── 长期工作\ 长期工作.txt
+```
+
+txt 是 UTF-8 带 BOM、CRLF 换行，记事本双击就能看：
+
+```
+分类：开发
+项目：我的项目
+建立：2026-11-03 12:22
+说明：这个文件由「工作清单」自动追加，记录本分类下的改动；手写的备注不会被覆盖。
+--------------------------------------------------------
+2026-11-03 12:22  新建分类「开发」
+2026-11-03 12:22  新建工作「写接口」（权重 3，截止 2026-11-05 18:00）
+2026-11-03 12:25  修改工作「写接口」：标记完成
+```
+
+规矩：
+
+- **只追加，不覆盖**——手写的备注留着，不会被下次写入冲掉
+- 建分类、建/改/删工作、勾步骤、置顶、改预警，都会追加一行
+- 分类**改名**时文件夹和 txt 一起改名，旧内容带过去
+- 删除分类**不删文件夹**，只在 txt 里记一句「已删除」，盘上的东西归你
+- DDL预警 是虚拟分类（克隆桶），不落盘
+- 项目没填文件夹、或者盘上没权限 → 安静跳过，清单本身照常用
+- 右键分类 →「打开分类文件夹」直接打开那个目录
+
+接口：`POST /api/categories/{id}/open`
+
 ## 选文件夹
 
 「文件夹」那一行只有一个「浏览…」按钮，两边弹的都是**操作系统自己的选目录对话框**：
@@ -146,7 +183,7 @@ bin/worklist-open.vbs 快捷方式的入口，隐藏控制台起 node
 bin/shortcut.js       生成/重建桌面快捷方式（也可以在面板里点按钮）
 bin/make-icon.js      零依赖生成 bin/icon.ico
 ui/standalone.html    独立模式的外壳，补一套 --dsw-alias-* 变量（含深色）
-test/smoke.mjs        端到端冒烟：14 项断言
+test/smoke.mjs        端到端冒烟：54 项断言
 ```
 
 **改完 `ui/app.js` 必须跑 `node bin/build.js`**，`client.js` 是生成物（大小随界面变，别记数字），
@@ -166,9 +203,10 @@ POST   /projects              { title, path?, color? }
 PATCH  /projects/:id          { title?, path?, color? }
 DELETE /projects/:id          连带分类和工作
 POST   /projects/:id/open     用系统文件管理器打开项目目录
-POST   /categories            { projectId, title, color? }
-PATCH  /categories/:id
-DELETE /categories/:id
+POST   /categories            { projectId, title, color? } 会顺手在项目文件夹里建同名文件夹 + txt
+PATCH  /categories/:id        { title?, color?, pinned? } 改名时文件夹和 txt 一起改
+DELETE /categories/:id        文件夹保留，只在 txt 里记一行
+POST   /categories/:id/open   用系统文件管理器打开这个分类的文件夹
 POST   /tasks                 { categoryId, title, weight?, dueAt?, steps? }
 PATCH  /tasks/:id             done=true 时会级联勾选所有步骤
 DELETE /tasks/:id

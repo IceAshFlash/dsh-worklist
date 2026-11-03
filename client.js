@@ -852,9 +852,16 @@ window.__ModuleLoader__.load({
         '-',
         { label: '新建工作…', run: function () { openTaskModal(null, category) } },
         { label: '重命名分类…', run: function () { openCategoryModal(project, category) } },
+        project.path === '' ? null : {
+          label: '打开分类文件夹',
+          run: function () {
+            request('POST', '/categories/' + encodeURIComponent(category.id) + '/open')
+              .catch(function (error) { notifyError(error) })
+          },
+        },
         '-',
         { label: '删除分类…', danger: true, run: function () { deleteCategory(category) } },
-      ])
+      ].filter(function (item) { return item !== null }))
     }
 
     var openTaskMenu = function (event, category, task) {

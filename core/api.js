@@ -25,6 +25,14 @@ import {
   toTimestamp,
   toWeight,
 } from './store.js'
+import {
+  appendCategoryRecord,
+  categoryRecordPaths,
+  ensureCategoryRecord,
+  renameCategoryRecord,
+  safeName,
+  stamp,
+} from './ledger.js'
 
 class ApiError extends Error {
   constructor(status, message) {
@@ -62,6 +70,24 @@ const requireText = (value, label) => {
 export const createApi = ({ file, aiSplit = null, openFolder = null, now = () => Date.now() }) => {
   const snapshot = async () => decorate(await read(file), now())
 
+  /* ---------------- 分类流水账 ---------------- */
+
+  // 分类 → (项目, 分类)；项目没填文件夹、或者这是个 DDL预警 克隆桶，就返回 null。
+  const recordOf = (state, categoryId) => {
+    const category = state.categories.find((item) => item.id === categoryId)
+    if (category === undefined || category.kind === 'ddl') return null
+    const project = state.projects.find((item) => item.id === category.projectId)
+    if (project === undefined || String(project.path ?? '').trim() === '') return null
+    return { project, category }
+  }
+
+  // 往那个分类的 txt 里追加一行；盘上出问题就安静跳过，不能让清单跟着挂。
+  const note = (state, categoryId, line) => {
+    const found = recordOf(state, categoryId)
+    if (found === null) return null
+    return appendCategoryRecord(found.project, found.category, line)
+  }
+
   /* ---------------- projects ---------------- */
 
   const addProject = (body) => mutate(file, (state) => {
@@ -78,7 +104,12 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
     }
     state.projects.push(project)
     // 新项目自带：重要工作 / 一般工作 / 长期工作 + 锁定的 DDL预警。
-    state.categories.push(...buildProjectCategories(project.id, createdAt))
+    const seeded = buildProjectCategories(project.id, createdAt)
+    state.categories.push(...seeded)
+    // 三个普通分类各建一个文件夹 + 一本流水账（DDL预警 是虚拟桶，不落盘）。
+    seeded
+      .filter((category) => category.kind !== 'ddl')
+      .forEach((category) => ensureCategoryRecord(project, category, createdAt))
     return project
   })
 
@@ -98,6 +129,12 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
       createdAt: now(),
     }
     state.categories.push(category)
+    // 建分类 = 建同名文件夹 + 同名 txt；项目的文件夹没填就跳过。
+    const owner = state.projects.find((item) => item.id === projectId)
+    if (owner !== undefined) {
+      ensureCategoryRecord(owner, category, category.createdAt)
+      appendCategoryRecord(owner, category, `新建分类「${category.title}」`, category.createdAt)
+    }
     return category
   })
 
@@ -132,6 +169,11 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
       updatedAt: now(),
     }
     state.tasks.push(task)
+    const bits = []
+    if (task.weight !== 1) bits.push(`权重 ${task.weight}`)
+    if (task.dueAt !== null) bits.push(`截止 ${stamp(task.dueAt)}`)
+    if (task.warnHours !== null) bits.push(`预警 ${task.warnHours} 小时`)
+    note(state, categoryId, `新建工作「${task.title}」${bits.length === 0 ? '' : '（' + bits.join('，') + '）'}`)
     return task
   })
 
@@ -143,6 +185,15 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
 
   const patchTask = (id, body) => mutate(file, (state) => {
     const task = findTask(state, id)
+    const before = {
+      title: task.title,
+      done: task.done,
+      weight: task.weight,
+      dueAt: task.dueAt,
+      warnHours: task.warnHours,
+      pinned: task.pinned === true,
+      categoryId: task.categoryId,
+    }
     if (body.title !== undefined) task.title = requireText(body.title, '工作名')
     if (body.weight !== undefined) task.weight = toWeight(body.weight, task.weight)
     if (body.done !== undefined) {
@@ -175,6 +226,22 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
       })
     }
     task.updatedAt = now()
+    // 把这次改动概括成一行，写进分类的流水账。
+    const changes = []
+    if (before.done !== task.done) changes.push(task.done ? '标记完成' : '取消完成')
+    if (before.title !== task.title) changes.push(`改名「${before.title}」→「${task.title}」`)
+    if (before.weight !== task.weight) changes.push(`权重 ${before.weight} → ${task.weight}`)
+    if (before.dueAt !== task.dueAt) changes.push(task.dueAt === null ? '清空截止时间' : `截止改为 ${stamp(task.dueAt)}`)
+    if (before.warnHours !== task.warnHours) {
+      changes.push(task.warnHours === null ? '预警改为跟随项目' : `预警 ${task.warnHours} 小时`)
+    }
+    if (before.pinned !== (task.pinned === true)) changes.push(task.pinned === true ? '置顶' : '取消置顶')
+    if (Array.isArray(body.steps)) changes.push(`步骤改为 ${task.steps.length} 步`)
+    if (changes.length > 0) note(state, task.categoryId, `修改工作「${task.title}」：${changes.join('；')}`)
+    if (before.categoryId !== task.categoryId) {
+      note(state, before.categoryId, `移出工作「${task.title}」`)
+      note(state, task.categoryId, `移入工作「${task.title}」`)
+    }
     return task
   })
 
@@ -190,6 +257,7 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
     }
     task.steps.push(step)
     task.updatedAt = now()
+    note(state, task.categoryId, `给工作「${task.title}」加了一步「${step.title}」`)
     return step
   })
 
@@ -201,7 +269,16 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
     if (body.weight !== undefined) step.weight = toWeight(body.weight, step.weight)
     if (body.done !== undefined) step.done = body.done === true
     task.updatedAt = now()
+    note(state, task.categoryId, `工作「${task.title}」的步骤「${step.title}」${step.done ? '勾完成' : '有改动'}`)
     return step
+  })
+
+  const removeTask = (id) => mutate(file, (state) => {
+    const task = state.tasks.find((item) => item.id === id)
+    if (task === undefined) throw missing('工作不存在')
+    state.tasks = state.tasks.filter((item) => item.id !== id)
+    note(state, task.categoryId, `删除工作「${task.title}」`)
+    return { tasks: 1 }
   })
 
   const removeStep = (taskId, stepId) => mutate(file, (state) => {
@@ -210,6 +287,7 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
     task.steps = task.steps.filter((item) => item.id !== stepId)
     if (task.steps.length === before) throw missing('步骤不存在')
     task.updatedAt = now()
+    note(state, task.categoryId, `删掉工作「${task.title}」的一步`)
     return { ok: true }
   })
 
@@ -464,15 +542,34 @@ $owner.Close()
           const category = state.categories.find((item) => item.id === params[0])
           if (category === undefined) throw missing('分类不存在')
           if (category.locked === true) throw new ApiError(409, 'DDL预警分类是自动维护的，不能改名')
+          const oldTitle = category.title
           if (body.title !== undefined) category.title = requireText(body.title, '分类名')
           if (body.color !== undefined) category.color = text(body.color) || category.color
           if (body.collapsed !== undefined) category.collapsed = body.collapsed === true
           if (body.pinned !== undefined) category.pinned = body.pinned === true
           if (body.order !== undefined) category.order = num(body.order, category.order)
+          if (category.title !== oldTitle) {
+            // 改名：文件夹和 txt 一起改名，内容带过去。
+            const owner = state.projects.find((item) => item.id === category.projectId)
+            if (owner !== undefined) renameCategoryRecord(owner, oldTitle, category.title)
+          } else if (body.pinned !== undefined) {
+            note(state, category.id, category.pinned === true ? '置顶分类' : '取消置顶分类')
+          }
           return category
         }),
       },
     })],
+    ['POST', /^\/categories\/([^/]+)\/open$/, async ({ params }) => {
+      const state = await read(file)
+      const found = recordOf(state, params[0])
+      if (found === null) throw bad('这个分类没有对应的文件夹（项目没填文件夹，或者是 DDL预警）')
+      const target = categoryRecordPaths(found.project, found.category)
+      if (target === null) throw bad('没有可打开的文件夹')
+      ensureCategoryRecord(found.project, found.category)
+      if (typeof openFolder !== 'function') throw bad('当前环境不能打开文件夹')
+      await openFolder(target.dir)
+      return { status: 200, body: { ok: true, path: target.dir } }
+    }],
     ['DELETE', /^\/categories\/([^/]+)$/, async ({ params }) => ({
       status: 200,
       body: {
@@ -483,6 +580,7 @@ $owner.Close()
           if (category === undefined) throw missing('分类不存在')
           if (category.locked === true) throw new ApiError(409, 'DDL预警分类是自动维护的，不能删除')
           const tasks = state.tasks.filter((task) => task.categoryId === id).length
+          note(state, id, `删除分类「${category.title}」（磁盘上的文件夹和记录文件保留）`)
           state.categories = state.categories.filter((item) => item.id !== id)
           state.tasks = state.tasks.filter((task) => task.categoryId !== id)
           return { tasks }
@@ -494,12 +592,7 @@ $owner.Close()
     ['PATCH', /^\/tasks\/([^/]+)$/, async ({ body, params }) => ({ status: 200, body: { ok: true, task: await patchTask(params[0], body) } })],
     ['DELETE', /^\/tasks\/([^/]+)$/, async ({ params }) => ({
       status: 200,
-      body: { ok: true, removed: await mutate(file, (state) => {
-        const before = state.tasks.length
-        state.tasks = state.tasks.filter((item) => item.id !== params[0])
-        if (state.tasks.length === before) throw missing('工作不存在')
-        return { tasks: 1 }
-      }) },
+      body: { ok: true, removed: await removeTask(params[0]) },
     })],
 
     ['POST', /^\/tasks\/([^/]+)\/steps$/, async ({ body, params }) => ({ status: 201, body: { ok: true, step: await addStep(params[0], body) } })],

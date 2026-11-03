@@ -17,6 +17,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
 const PORT = 7431
 const DATA = path.join(ROOT, `.smoke-data-${process.pid}.json`)
+const FS_ROOT = path.join(ROOT, `.smoke-fs-${process.pid}`)
 
 const BASE = `http://127.0.0.1:${PORT}/api`
 
@@ -75,7 +76,8 @@ try {
   const empty = await call('GET', '/state')
   check('空状态可用', empty.status === 200 && Array.isArray(empty.payload.state.projects), `projects=${empty.payload.state.projects?.length}`)
 
-  const project = await call('POST', '/projects', { title: '冒烟项目', path: os.tmpdir() })
+  fs.mkdirSync(FS_ROOT, { recursive: true })
+  const project = await call('POST', '/projects', { title: '冒烟项目', path: FS_ROOT })
   check('建项目', project.status === 201, `id=${project.payload.project?.id}`)
   const projectId = project.payload.project?.id
 
@@ -87,9 +89,18 @@ try {
   check('有锁定的 DDL预警 分类', ddl?.locked === true && ddl?.title === 'DDL预警', `locked=${ddl?.locked}`)
   check('默认预警时长 24 小时', projectOf(state)?.warnHours === 24, `warnHours=${projectOf(state)?.warnHours}`)
 
+  const seededDir = path.join(FS_ROOT, '重要工作')
+  const seededFile = path.join(seededDir, '重要工作.txt')
+  check('新项目三分类各建了文件夹', fs.existsSync(path.join(FS_ROOT, '长期工作')), FS_ROOT)
+  check('文件夹里有同名 txt', fs.existsSync(seededFile), seededFile)
+
   const category = await call('POST', '/categories', { projectId, title: '开发' })
   check('建分类', category.status === 201, `id=${category.payload.category?.id}`)
   const categoryId = category.payload.category?.id
+  const catDir = path.join(FS_ROOT, '开发')
+  const catFile = path.join(catDir, '开发.txt')
+  check('建分类时自动建了文件夹', fs.existsSync(catDir), catDir)
+  check('txt 里记下了建分类', fs.readFileSync(catFile, 'utf8').includes('新建分类「开发」'), catFile)
 
   const task = await call('POST', '/tasks', {
     categoryId,
@@ -103,6 +114,7 @@ try {
   })
   check('建工作 + 三步', task.status === 201 && task.payload.task?.steps?.length === 3, `steps=${task.payload.task?.steps?.length}`)
   const taskId = task.payload.task?.id
+  check('txt 里记下了建工作', fs.readFileSync(catFile, 'utf8').includes('新建工作「写接口」'), catFile)
 
   state = (await call('GET', '/state')).payload.state
   const found = (categoryById(state, categoryId)?.tasks ?? [])[0]
@@ -178,6 +190,11 @@ try {
 
   const renameNormal = await call('PATCH', `/categories/${categoryId}`, { title: '开发（改名）' })
   check('普通分类可以改名', renameNormal.status === 200, `title=${renameNormal.payload.category?.title}`)
+  const movedDir = path.join(FS_ROOT, '开发（改名）')
+  const movedFile = path.join(movedDir, '开发（改名）.txt')
+  const movedText = fs.existsSync(movedFile) ? fs.readFileSync(movedFile, 'utf8') : ''
+  check('改名时文件夹跟着改', fs.existsSync(movedDir) && !fs.existsSync(catDir), movedDir)
+  check('改名后旧记录还在', movedText.includes('新建工作「写接口」') && movedText.includes('分类改名为「开发（改名）」'), movedFile.split(path.sep).pop())
 
   await call('PATCH', `/tasks/${taskId}`, { done: true })
   state = (await call('GET', '/state')).payload.state
@@ -230,6 +247,7 @@ try {
   stop()
   await new Promise((resolve) => setTimeout(resolve, 250))
   try { fs.rmSync(DATA, { force: true }) } catch { /* 忽略 */ }
+  try { fs.rmSync(FS_ROOT, { recursive: true, force: true }) } catch { /* 忽略 */ }
 }
 
 console.log(failures === 0 ? '\n全部通过' : `\n${failures} 项失败`)

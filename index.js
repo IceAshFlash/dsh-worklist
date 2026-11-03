@@ -16,6 +16,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { appendCategoryRecord, ensureCategoryRecord } from './core/ledger.js'
 import { openFolder } from './core/open.js'
 import { createApi } from './core/api.js'
 import {
@@ -28,6 +29,15 @@ import {
   toTimestamp,
   toWeight,
 } from './core/store.js'
+
+// 工具这条路也要往分类的 txt 里记一笔，否则模型改的东西在流水账里看不见。
+const noteCategory = (state, categoryId, line) => {
+  const category = state.categories.find((item) => item.id === categoryId)
+  if (category === undefined || category.kind === 'ddl') return
+  const project = state.projects.find((item) => item.id === category.projectId)
+  if (project === undefined || String(project.path ?? '').trim() === '') return
+  appendCategoryRecord(project, category, line)
+}
 
 export const name = 'dsh-worklist'
 
@@ -417,6 +427,8 @@ export function apply(ctx) {
               createdAt: Date.now(),
             }
             state.categories.push(created)
+            ensureCategoryRecord(project, created)
+            appendCategoryRecord(project, created, `新建分类「${created.title}」`)
             return created
           })
           return { text: `已在项目里新建分类「${category.title}」（id ${category.id}）。` }
@@ -454,6 +466,7 @@ export function apply(ctx) {
               updatedAt: Date.now(),
             }
             state.tasks.push(created)
+            noteCategory(state, created.categoryId, `新建工作「${created.title}」（来自 Agent 工具）`)
             return created
           })
           return { text: `已新建工作「${task.title}」（id ${task.id}，权重 ${task.weight}${task.steps.length > 0 ? `，${task.steps.length} 步` : ''}）。` }
@@ -496,6 +509,8 @@ export function apply(ctx) {
             if (body.warnHours !== undefined) task.warnHours = taskWarnHours(body.warnHours)
             if (body.pinned !== undefined) task.pinned = body.pinned === true
             task.updatedAt = Date.now()
+            const touched = ['weight', 'done', 'note', 'dueAt', 'warnHours', 'pinned'].filter((key) => body[key] !== undefined)
+            noteCategory(state, task.categoryId, `修改工作「${task.title}」${touched.length === 0 ? '' : '：' + touched.join('、')}（来自 Agent 工具）`)
             return task
           })
           return { text: `已更新「${result.title}」。` }
