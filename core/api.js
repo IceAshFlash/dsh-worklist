@@ -207,6 +207,11 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
     // 传 null / 空串 = 回到"跟随项目默认"。
     if (body.warnHours !== undefined) task.warnHours = taskWarnHours(body.warnHours)
     if (body.pinned !== undefined) task.pinned = body.pinned === true
+    if (body.archived !== undefined) {
+      task.archived = body.archived === true
+      task.archivedAt = task.archived ? Date.now() : null
+      note(state, task.categoryId, (task.archived ? '归档工作「' : '取消归档「') + task.title + '」')
+    }
     if (body.categoryId !== undefined) {
       const categoryId = requireText(body.categoryId, 'categoryId')
       const target = state.categories.find((category) => category.id === categoryId)
@@ -515,6 +520,10 @@ $owner.Close()
           if (body.note !== undefined) project.note = text(body.note)
           if (body.warnHours !== undefined) project.warnHours = clampWarnHours(body.warnHours)
           if (body.pinned !== undefined) project.pinned = body.pinned === true
+          if (body.archived !== undefined) {
+            project.archived = body.archived === true
+            project.archivedAt = project.archived ? Date.now() : null
+          }
           // 改了名字、且没有真的换文件夹 → 文件夹跟着改名（文件夹名本来就是旧项目名时）。
           const pathEdited = body.path !== undefined && text(project.path) !== beforePath
           if (body.title !== undefined && project.title !== beforeTitle && !pathEdited) {
@@ -556,11 +565,17 @@ $owner.Close()
           if (body.color !== undefined) category.color = text(body.color) || category.color
           if (body.collapsed !== undefined) category.collapsed = body.collapsed === true
           if (body.pinned !== undefined) category.pinned = body.pinned === true
+          if (body.archived !== undefined) {
+            category.archived = body.archived === true
+            category.archivedAt = category.archived ? Date.now() : null
+          }
           if (body.order !== undefined) category.order = num(body.order, category.order)
           if (category.title !== oldTitle) {
             // 改名：文件夹和 txt 一起改名，内容带过去。
             const owner = state.projects.find((item) => item.id === category.projectId)
             if (owner !== undefined) renameCategoryRecord(owner, oldTitle, category.title)
+          } else if (body.archived !== undefined) {
+            note(state, category.id, category.archived === true ? '归档分类' : '取消归档分类')
           } else if (body.pinned !== undefined) {
             note(state, category.id, category.pinned === true ? '置顶分类' : '取消置顶分类')
           }

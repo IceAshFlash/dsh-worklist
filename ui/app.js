@@ -20,6 +20,11 @@
     '.wl-side{width:232px;flex:0 0 232px;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--dsw-alias-border-l1,#e6e8eb);background:var(--dsw-alias-bg-layer-1,#fafbfc)}',
     '.wl-side-head{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 8px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#5b6470)}',
     '.wl-side-list{flex:1 1 auto;overflow-y:auto;padding:0 8px 12px}',
+    '.wl-arch-btn{margin-left:auto;margin-right:2px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:transparent;color:var(--dsw-alias-label-secondary,#5b6470);border-radius:6px;padding:1px 6px;font-size:11px;line-height:16px;cursor:pointer;font-family:inherit}',
+    '.wl-arch-btn:hover{background:var(--dsw-alias-bg-layer-2,#f0f2f5)}',
+    '.wl-arch-btn.is-on{color:var(--wl-accent);border-color:var(--wl-accent)}',
+    '.wl-chip.is-arch{background:rgba(120,130,145,.14);color:var(--dsw-alias-label-secondary,#5b6470)}',
+    '.wl-task.is-archived,.wl-cat.is-archived,.wl-proj.is-archived{opacity:.55}',
     '.wl-proj{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:8px;padding:8px 10px;margin:2px 0;cursor:pointer;color:inherit;font:inherit}',
     '.wl-proj:hover{background:var(--dsw-alias-bg-layer-2,#f0f2f5)}',
     '.wl-proj.is-active{background:var(--dsw-alias-bg-layer-2,#eceff3);box-shadow:inset 2px 0 0 var(--wl-accent)}',
@@ -228,10 +233,43 @@
       expanded: {},
       aiAvailable: false,
       dataFile: '',
+      archiveMode: 'hide',
     }
     var mounted = true
     var mask = null
     var pickerOpen = false
+
+    /*
+     * 归档的三种看法：默认不进视线，切到「含归档」能把它们找出来，
+     * 「只看归档」用来批量清理。存在 localStorage 里，刷新页面不会忘。
+     */
+    var ARCHIVE_KEY = 'wl-archive-mode'
+    var ARCHIVE_MODES = ['hide', 'all', 'only']
+    var ARCHIVE_TEXT = { hide: '归档 关', all: '归档 含', only: '归档 只' }
+    try {
+      var savedMode = localStorage.getItem(ARCHIVE_KEY)
+      if (ARCHIVE_MODES.indexOf(savedMode) >= 0) view.archiveMode = savedMode
+    } catch (error) { /* 独立窗口可能没有 localStorage */ }
+
+    var visibleArchived = function (item) {
+      if (item.archived !== true && view.archiveMode === 'only') return false
+      if (view.archiveMode === 'hide') return item.archived !== true
+      if (view.archiveMode === 'only') return item.archived === true
+      return true
+    }
+
+    var cycleArchiveMode = function () {
+      var next = ARCHIVE_MODES[(ARCHIVE_MODES.indexOf(view.archiveMode) + 1) % ARCHIVE_MODES.length]
+      view.archiveMode = next
+      try { localStorage.setItem(ARCHIVE_KEY, next) } catch (error) { /* 忽略 */ }
+      render()
+    }
+
+    var setArchived = function (collection, id, archived) {
+      return request('PATCH', '/' + collection + '/' + encodeURIComponent(id), { archived: archived })
+        .then(function () { return refresh() })
+        .catch(function (error) { notifyError(error) })
+    }
 
     var request = function (method, path, body) {
       var init = { method: method, headers: {}, credentials: 'same-origin' }
@@ -259,10 +297,11 @@
       view.data = state
       view.error = null
       view.loading = false
-      var exists = view.data.projects.some(function (p) { return p.id === view.selectedProjectId })
+      var exists = view.data.projects.some(function (p) { return p.id === view.selectedProjectId && visibleArchived(p) })
       if (!exists) {
-        var withOpen = view.data.projects.filter(function (p) { return p.openCount > 0 })
-        view.selectedProjectId = (withOpen[0] || view.data.projects[0] || {}).id || null
+        var shown = view.data.projects.filter(visibleArchived)
+        var withOpen = shown.filter(function (p) { return p.openCount > 0 })
+        view.selectedProjectId = (withOpen[0] || shown[0] || {}).id || null
       }
       render()
     }
@@ -332,20 +371,27 @@
       side.appendChild(h('div', { class: 'wl-side-head' },
         h('span', { text: '项目' }),
         h('button', {
+          class: 'wl-arch-btn' + (view.archiveMode === 'hide' ? '' : ' is-on'),
+          title: '切换查看方式：不显示归档 → 含归档 → 只看归档',
+          onclick: cycleArchiveMode,
+          text: ARCHIVE_TEXT[view.archiveMode],
+        }),
+        h('button', {
           class: 'wl-btn is-ghost',
           title: '新建项目',
           onclick: function () { openProjectModal() },
         }, '＋')
       ))
       var list = h('div', { class: 'wl-side-list' })
-      var projects = view.data === null ? [] : view.data.projects
+      var projects = view.data === null ? [] : view.data.projects.filter(visibleArchived)
       if (projects.length === 0) {
         list.appendChild(h('div', { class: 'wl-hint', style: { padding: '8px 10px' }, text: '还没有项目' }))
       }
       projects.forEach(function (item) {
         var active = item.id === view.selectedProjectId
         var button = h('button', {
-          class: 'wl-proj' + (active ? ' is-active' : '') + (item.pinned ? ' is-pinned' : ''),
+          class: 'wl-proj' + (active ? ' is-active' : '') + (item.pinned ? ' is-pinned' : '') +
+            (item.archived === true ? ' is-archived' : ''),
           onclick: function () {
             view.selectedProjectId = item.id
             render()
@@ -464,7 +510,11 @@
         ))
         return scroll
       }
-      project.categories.forEach(function (category) {
+      project.categories.filter(function (category) {
+        // DDL预警 是自动桶，没有归档内容，切到「只看归档」时收起来。
+        if (category.kind === 'ddl') return view.archiveMode !== 'only'
+        return visibleArchived(category)
+      }).forEach(function (category) {
         scroll.appendChild(renderCategory(project, category))
       })
       return scroll
@@ -489,7 +539,10 @@
     var renderCategory = function (project, category) {
       var isDdl = category.kind === 'ddl'
       var open = view.expanded[category.id] !== false
-      var box = h('div', { class: 'wl-cat' + (isDdl ? ' is-ddl' : ''), dataset: { cat: category.id } })
+      var box = h('div', {
+        class: 'wl-cat' + (isDdl ? ' is-ddl' : '') + (category.archived === true ? ' is-archived' : ''),
+        dataset: { cat: category.id },
+      })
       var head = h('div', {
         class: 'wl-cat-head',
         oncontextmenu: function (event) {
@@ -511,6 +564,7 @@
         !isDdl && category.pinned ? h('span', { class: 'wl-pin', title: '已置顶', text: '📌' }) : null,
         h('span', { class: 'wl-cat-name', text: category.title, title: isDdl ? '自动收录撞上预警线的工作，不能改名或删除' : category.title }),
         isDdl ? h('span', { class: 'wl-cat-hint', text: '自动收录' }) : null,
+        !isDdl && category.archived === true ? h('span', { class: 'wl-chip is-arch', text: '已归档' }) : null,
         bar(category.progress, '64px'),
         h('span', { class: 'wl-cat-count', text: pct(category.progress) + ' · ' + category.openCount + '/' + category.taskCount }),
         h('span', { class: 'wl-grow' })
@@ -557,7 +611,7 @@
           text: isDdl ? '暂时没有撞上预警线的工作。' : '这个分类下还没有工作。',
         }))
       }
-      category.tasks.forEach(function (task) {
+      category.tasks.filter(visibleArchived).forEach(function (task) {
         body.appendChild(renderTask(category, task))
       })
       box.appendChild(body)
@@ -572,7 +626,8 @@
       var expanded = view.expanded['t:' + realId] === true
       var wrap = h('div')
       var row = h('div', {
-        class: 'wl-task' + (done ? ' is-done' : '') + (isClone ? ' is-clone' : ''),
+        class: 'wl-task' + (done ? ' is-done' : '') + (isClone ? ' is-clone' : '') +
+          (task.archived === true ? ' is-archived' : ''),
         oncontextmenu: function (event) {
           event.preventDefault()
           event.stopPropagation()
@@ -813,6 +868,11 @@
         })
       }
       items.push('-')
+      items.push({
+        label: project.archived === true ? '取消归档' : '归档项目',
+        run: function () { setArchived('projects', project.id, project.archived !== true) },
+      })
+      items.push('-')
       items.push({ label: '删除项目…', danger: true, run: function () { deleteProject(project) } })
       openMenu(event, items)
     }
@@ -840,6 +900,10 @@
           },
         },
         '-',
+        {
+          label: category.archived === true ? '取消归档' : '归档分类',
+          run: function () { setArchived('categories', category.id, category.archived !== true) },
+        },
         { label: '删除分类…', danger: true, run: function () { deleteCategory(category) } },
       ].filter(function (item) { return item !== null }))
     }
@@ -858,6 +922,11 @@
         { label: done ? '标记为未完成' : '标记为完成', run: function () { toggleDone(realId, task, !done) } },
         '-',
         { label: '编辑…', disabled: real === null, run: function () { if (real !== null) openTaskModal(real, home) } },
+        '-',
+        {
+          label: task.archived === true ? '取消归档' : '归档工作',
+          run: function () { setArchived('tasks', realId, task.archived !== true) },
+        },
         '-',
         { label: '删除工作…', danger: true, run: function () { deleteTask(real === null ? task : real) } },
       ])

@@ -214,7 +214,7 @@ export const decorate = (state, now = Date.now()) => {
         .map((item) => item.id),
     )
     const hits = tasks
-      .filter((task) => sources.has(task.categoryId) && task.progress < 1 && isWarning(task, task.warnHours, now))
+      .filter((task) => sources.has(task.categoryId) && task.archived !== true && task.progress < 1 && isWarning(task, task.warnHours, now))
       .sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1) || a.dueAt - b.dueAt)
       .map((task) => ({
         ...task,
@@ -229,8 +229,10 @@ export const decorate = (state, now = Date.now()) => {
   const categories = sourceCategories.map((category) => {
     const isDdl = category.kind === 'ddl'
     const own = isDdl ? (clonesByCategory.get(category.id) ?? []) : (byCategory.get(category.id) ?? [])
-    const progress = weightedAverage(own.map((task) => ({ weight: task.weight, progress: task.progress })))
-    const dueAt = own.reduce((min, task) => {
+    // 归档的工作留在列表里（切到"含归档"还能看见），但不参与进度和计数。
+    const counted = own.filter((task) => task.archived !== true)
+    const progress = weightedAverage(counted.map((task) => ({ weight: task.weight, progress: task.progress })))
+    const dueAt = counted.reduce((min, task) => {
       if (!Number.isFinite(task.dueAt)) return min
       return min === null || task.dueAt < min ? task.dueAt : min
     }, null)
@@ -238,8 +240,9 @@ export const decorate = (state, now = Date.now()) => {
     return {
       ...category,
       progress,
-      taskCount: own.length,
-      openCount: own.filter((task) => task.progress < 1).length,
+      taskCount: counted.length,
+      openCount: counted.filter((task) => task.progress < 1).length,
+      archivedCount: own.length - counted.length,
       dueAt,
       due: dueState(dueAt, now).kind,
       warnHours: isDdl ? warnHours : null,
@@ -255,8 +258,8 @@ export const decorate = (state, now = Date.now()) => {
   }
 
   const projects = projectsRaw.map((project) => {
-    const own = (byProject.get(project.id) ?? []).filter((category) => category.kind !== 'ddl')
-    const allTasks = own.flatMap((category) => category.tasks)
+    const own = (byProject.get(project.id) ?? []).filter((category) => category.kind !== 'ddl' && category.archived !== true)
+    const allTasks = own.flatMap((category) => category.tasks.filter((task) => task.archived !== true))
     const progress = weightedAverage(allTasks.map((task) => ({ weight: task.weight, progress: task.progress })))
     const dueAt = own.reduce((min, category) => {
       if (!Number.isFinite(category.dueAt)) return min
@@ -273,6 +276,10 @@ export const decorate = (state, now = Date.now()) => {
       warningCount: ddl?.taskCount ?? 0,
       taskCount: allTasks.length,
       openCount: allTasks.filter((task) => task.progress < 1).length,
+      // 归档的总数：归档分类里的全部工作 + 未归档分类里归档的工作。
+      archivedCount: (byProject.get(project.id) ?? [])
+        .filter((category) => category.kind !== 'ddl')
+        .reduce((sum, category) => sum + (category.archived === true ? category.tasks.length : (category.archivedCount ?? 0)), 0),
       dueAt,
       due: dueState(dueAt, now).kind,
     }
@@ -349,6 +356,8 @@ const sanitizeTask = (raw) => {
     warnHours: taskWarnHours(task.warnHours),
     steps: Array.isArray(task.steps) ? task.steps.map(sanitizeStep) : [],
     pinned: task.pinned === true,
+    archived: task.archived === true,
+    archivedAt: task.archived === true ? toTimestamp(task.archivedAt) : null,
     createdAt,
     updatedAt: toTimestamp(task.updatedAt) ?? createdAt,
   }
@@ -369,6 +378,8 @@ const sanitizeCategory = (raw) => {
     collapsed: category.collapsed === true,
     // DDL预警 是系统分类，永远排第一，pinned 对它没有意义但保留字段。
     pinned: kind === 'ddl' ? true : category.pinned === true,
+    archived: kind !== 'ddl' && category.archived === true,
+    archivedAt: kind !== 'ddl' && category.archived === true ? toTimestamp(category.archivedAt) : null,
     createdAt: toTimestamp(category.createdAt) ?? Date.now(),
   }
 }
@@ -382,6 +393,8 @@ const sanitizeProject = (raw) => {
     color: str(project.color) || PALETTE[0],
     note: str(project.note),
     pinned: project.pinned === true,
+    archived: project.archived === true,
+    archivedAt: project.archived === true ? toTimestamp(project.archivedAt) : null,
     warnHours: clampWarnHours(project.warnHours),
     // 脚手架版本：2 = 已经有三个默认分类 + DDL预警。老数据靠它补一次，补完就不再补，
     // 这样用户把默认分类删光也不会每次加载又冒出来。

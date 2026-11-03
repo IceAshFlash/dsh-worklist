@@ -235,6 +235,29 @@ try {
   const openBad = await call('POST', `/projects/${projectId}/open`)
   check('打开不存在的目录有反馈', openBad.status === 400 || openBad.status === 200, `status=${openBad.status}`)
 
+  // 归档：默认不算进度、不算任务数，但数据还在
+  const arcTask = await call('POST', '/tasks', { categoryId, title: '这条要归档', weight: 1 })
+  const arcId = arcTask.payload.task?.id
+  const pBefore = (await call('GET', '/state')).payload.state.projects.find((p) => p.id === projectId)
+  const arch = await call('PATCH', `/tasks/${arcId}`, { archived: true })
+  check('可以归档工作', arch.status === 200 && arch.payload.task?.archived === true, `status=${arch.status}`)
+  const afterArch = (await call('GET', '/state')).payload.state
+  const pAfter = afterArch.projects.find((p) => p.id === projectId)
+  check('归档的工作还留在数据里', afterArch.tasks.some((t) => t.id === arcId && t.archived === true))
+  check('归档后不计入任务数', pAfter.taskCount === pBefore.taskCount - 1, `${pBefore.taskCount} → ${pAfter.taskCount}`)
+  check('归档后不在 DDL 预警里', !afterArch.categories.some((c) => c.kind === 'ddl' && c.tasks.some((t) => t.cloneOf === arcId)))
+  const unarch = await call('PATCH', `/tasks/${arcId}`, { archived: false })
+  const pBack = (await call('GET', '/state')).payload.state.projects.find((p) => p.id === projectId)
+  check('取消归档回到统计', unarch.payload.task?.archived === false && pBack.taskCount === pBefore.taskCount, `${pBack.taskCount}`)
+  const catArch = await call('PATCH', `/categories/${categoryId}`, { archived: true })
+  const pCatArch = (await call('GET', '/state')).payload.state.projects.find((p) => p.id === projectId)
+  check('可以归档分类', catArch.payload.category?.archived === true)
+  check('归档分类后它的工作不计入项目', pCatArch.taskCount === 0, `taskCount=${pCatArch.taskCount}`)
+  await call('PATCH', `/categories/${categoryId}`, { archived: false })
+  const projArch = await call('PATCH', `/projects/${projectId}`, { archived: true })
+  check('可以归档项目', projArch.payload.project?.archived === true)
+  await call('PATCH', `/projects/${projectId}`, { archived: false })
+
   const removed = await call('DELETE', `/projects/${projectId}`)
   check('删项目（级联）', removed.status === 200, `status=${removed.status}`)
   await call('DELETE', `/projects/${otherId}`)

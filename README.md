@@ -35,9 +35,9 @@ plugin_manager({ action: 'install_bundle', target: 'C:\\path\\to\\dsh-worklist' 
 ## 数据模型
 
 ```
-project { id, title, path, color, pinned, warnHours, scaffold, createdAt }
-  category { id, projectId, title, color, order, pinned, kind: normal|ddl, locked }
-    task { id, categoryId, title, weight, done, pinned, dueAt, warnHours, steps[], createdAt, updatedAt }
+project { id, title, path, color, pinned, archived, archivedAt, warnHours, scaffold, createdAt }
+  category { id, projectId, title, color, order, pinned, archived, archivedAt, kind: normal|ddl, locked }
+    task { id, categoryId, title, weight, done, pinned, archived, archivedAt, dueAt, warnHours, steps[], createdAt, updatedAt }
       step { id, title, weight, done }
 ```
 
@@ -146,6 +146,27 @@ txt 是 UTF-8 带 BOM、CRLF 换行，记事本双击就能看：
 
 接口：`POST /api/categories/{id}/open`
 
+## 归档
+
+三级都能归档：右键项目 / 分类 / 工作 →「归档…」。归档的东西**数据还在**，只是从视线里撤下去：
+
+- 默认不显示、不参与进度和计数、不进 DDL预警
+- 侧栏「项目」右边有个小按钮，点一下切换查看方式：
+
+| 按钮显示 | 看到什么 |
+| --- | --- |
+| `归档 关` | 只看没归档的（默认） |
+| `归档 含` | 全都在，归档的压暗显示 |
+| `归档 只` | 只看归档的，方便批量恢复或删除 |
+
+这个选择记在 `localStorage`，刷新页面不会忘。归档的项目、分类、工作随时能右键「取消归档」拉回来。
+
+```
+PATCH /api/projects/{id}    { "archived": true }
+PATCH /api/categories/{id}  { "archived": true }
+PATCH /api/tasks/{id}       { "archived": true }
+```
+
 ## 选文件夹
 
 「文件夹」那一行只有一个「浏览…」按钮，两边弹的都是**操作系统自己的选目录对话框**：
@@ -183,7 +204,7 @@ bin/worklist-open.vbs 快捷方式的入口，隐藏控制台起 node
 bin/shortcut.js       生成/重建桌面快捷方式（也可以在面板里点按钮）
 bin/make-icon.js      零依赖生成 bin/icon.ico
 ui/standalone.html    独立模式的外壳，补一套 --dsw-alias-* 变量（含深色）
-test/smoke.mjs        端到端冒烟：57 项断言
+test/smoke.mjs        端到端冒烟：65 项断言
 ```
 
 **改完 `ui/app.js` 必须跑 `node bin/build.js`**，`client.js` 是生成物（大小随界面变，别记数字），

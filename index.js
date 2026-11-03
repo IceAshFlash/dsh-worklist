@@ -363,6 +363,7 @@ export function apply(ctx) {
       },
       note: { type: 'string', description: 'Free-form note on the task.' },
       pinned: { type: 'boolean', description: 'Pin the task to the top of its category (true) or unpin it (false).' },
+      archived: { type: 'boolean', description: 'Archive the task (true) or bring it back (false). Archived tasks are hidden by default and do not count towards progress.' },
       done: { type: 'boolean', description: 'Mark the task (or the whole step list) done.' },
       steps: {
         type: 'array',
@@ -508,8 +509,9 @@ export function apply(ctx) {
             if (body.dueAt !== undefined) task.dueAt = toTimestamp(body.dueAt)
             if (body.warnHours !== undefined) task.warnHours = taskWarnHours(body.warnHours)
             if (body.pinned !== undefined) task.pinned = body.pinned === true
+            if (body.archived !== undefined) task.archived = body.archived === true
             task.updatedAt = Date.now()
-            const touched = ['weight', 'done', 'note', 'dueAt', 'warnHours', 'pinned'].filter((key) => body[key] !== undefined)
+            const touched = ['weight', 'done', 'note', 'dueAt', 'warnHours', 'pinned', 'archived'].filter((key) => body[key] !== undefined)
             noteCategory(state, task.categoryId, `修改工作「${task.title}」${touched.length === 0 ? '' : '：' + touched.join('、')}（来自 Agent 工具）`)
             return task
           })
