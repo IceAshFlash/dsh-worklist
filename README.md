@@ -138,7 +138,7 @@ txt 是 UTF-8 带 BOM、CRLF 换行，记事本双击就能看：
 
 - **只追加，不覆盖**——手写的备注留着，不会被下次写入冲掉
 - 建分类、建/改/删工作、勾步骤、置顶、改预警，都会追加一行
-- 分类**改名**时文件夹和 txt 一起改名，旧内容带过去
+- **改名会连文件夹一起改**：分类改名 → 分类文件夹和 txt 一起改名；项目改名 → 如果项目文件夹的名字本来就是旧项目名，整个文件夹（连同里面的分类文件夹）跟着改名。你手挑的、名字和项目名无关的目录不会被改动。
 - 删除分类**不删文件夹**，只在 txt 里记一句「已删除」，盘上的东西归你
 - DDL预警 是虚拟分类（克隆桶），不落盘
 - 项目没填文件夹、或者盘上没权限 → 安静跳过，清单本身照常用
@@ -183,7 +183,7 @@ bin/worklist-open.vbs 快捷方式的入口，隐藏控制台起 node
 bin/shortcut.js       生成/重建桌面快捷方式（也可以在面板里点按钮）
 bin/make-icon.js      零依赖生成 bin/icon.ico
 ui/standalone.html    独立模式的外壳，补一套 --dsw-alias-* 变量（含深色）
-test/smoke.mjs        端到端冒烟：54 项断言
+test/smoke.mjs        端到端冒烟：57 项断言
 ```
 
 **改完 `ui/app.js` 必须跑 `node bin/build.js`**，`client.js` 是生成物（大小随界面变，别记数字），
@@ -200,7 +200,7 @@ GET    /fs/list?path=         列子文件夹（给「选择文件夹」弹窗�
 POST   /fs/mkdir              { parent, name } 新建文件夹，返回新路径
 POST   /fs/pick               弹系统选目录对话框，返回 { path }（取消是 null；只在 Windows 上有）
 POST   /projects              { title, path?, color? }
-PATCH  /projects/:id          { title?, path?, color? }
+PATCH  /projects/:id          { title?, path?, color? } 改名时项目文件夹跟着改（文件夹名 == 旧项目名时）
 DELETE /projects/:id          连带分类和工作
 POST   /projects/:id/open     用系统文件管理器打开项目目录
 POST   /categories            { projectId, title, color? } 会顺手在项目文件夹里建同名文件夹 + txt

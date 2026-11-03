@@ -238,6 +238,22 @@ try {
   const removed = await call('DELETE', `/projects/${projectId}`)
   check('删项目（级联）', removed.status === 200, `status=${removed.status}`)
   await call('DELETE', `/projects/${otherId}`)
+
+  // 项目改名 → 项目文件夹跟着改名（文件夹名正好是旧项目名时）
+  const p2 = await call('POST', '/projects', { title: '项目甲', path: path.join(FS_ROOT, '项目甲') })
+  const p2Id = p2.payload.project?.id
+  await call('POST', '/categories', { projectId: p2Id, title: '分支A' })
+  check('项目甲的文件夹建好', fs.existsSync(path.join(FS_ROOT, '项目甲', '分支A')), path.join(FS_ROOT, '项目甲'))
+  const p2Renamed = await call('PATCH', `/projects/${p2Id}`, { title: '项目乙' })
+  check('改项目名时文件夹跟着改',
+    p2Renamed.payload.project?.path === path.join(FS_ROOT, '项目乙') &&
+      fs.existsSync(path.join(FS_ROOT, '项目乙', '分支A', '分支A.txt')) &&
+      !fs.existsSync(path.join(FS_ROOT, '项目甲')),
+    `path=${p2Renamed.payload.project?.path}`)
+  const p2Same = await call('PATCH', `/projects/${p2Id}`, { title: '项目乙' })
+  check('名字没变就不动文件夹', p2Same.payload.project?.path === path.join(FS_ROOT, '项目乙'), `path=${p2Same.payload.project?.path}`)
+  await call('DELETE', `/projects/${p2Id}`)
+
   state = (await call('GET', '/state')).payload.state
   check('级联删干净', state.projects?.length === 0 && state.categories?.length === 0 && state.tasks?.length === 0)
 } catch (error) {

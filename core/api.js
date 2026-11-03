@@ -30,6 +30,7 @@ import {
   categoryRecordPaths,
   ensureCategoryRecord,
   renameCategoryRecord,
+  renameProjectFolder,
   safeName,
   stamp,
 } from './ledger.js'
@@ -506,12 +507,20 @@ $owner.Close()
         project: await mutate(file, (state) => {
           const project = state.projects.find((item) => item.id === params[0])
           if (project === undefined) throw missing('项目不存在')
+          const beforeTitle = project.title
+          const beforePath = text(project.path)
           if (body.title !== undefined) project.title = requireText(body.title, '项目名')
           if (body.path !== undefined) project.path = text(body.path)
           if (body.color !== undefined) project.color = text(body.color) || project.color
           if (body.note !== undefined) project.note = text(body.note)
           if (body.warnHours !== undefined) project.warnHours = clampWarnHours(body.warnHours)
           if (body.pinned !== undefined) project.pinned = body.pinned === true
+          // 改了名字、且没有真的换文件夹 → 文件夹跟着改名（文件夹名本来就是旧项目名时）。
+          const pathEdited = body.path !== undefined && text(project.path) !== beforePath
+          if (body.title !== undefined && project.title !== beforeTitle && !pathEdited) {
+            const moved = renameProjectFolder(project, beforeTitle)
+            if (moved !== null) project.path = moved
+          }
           return project
         }),
       },

@@ -115,3 +115,27 @@ export const renameCategoryRecord = (project, oldTitle, newTitle, when = Date.no
   }
   return appendCategoryRecord(project, { title: newTitle }, `分类改名为「${newTitle}」（原名「${oldTitle}」）`, when)
 }
+
+/**
+ * 项目改名时，把项目文件夹也改成新名字。
+ *
+ * 只在「文件夹名 == 旧项目名」时动手 —— 也就是说，只有这个文件夹本来就是按项目名建的
+ * （新建项目时默认就是这样），才会跟着改名；用户自己挑了一个不相干的目录，不去动它。
+ * 返回新路径；没动就返回 null。
+ */
+export const renameProjectFolder = (project, previousTitle) => {
+  const root = String(project?.path ?? '').trim()
+  if (root === '') return null
+  const oldName = safeName(previousTitle)
+  const newName = safeName(project?.title)
+  if (oldName === newName) return null
+  if (path.basename(root).toLowerCase() !== oldName.toLowerCase()) return null
+  const target = path.join(path.dirname(root), newName)
+  try {
+    if (fs.existsSync(target)) return null
+    fs.renameSync(root, target)
+    return target
+  } catch {
+    return null
+  }
+}
