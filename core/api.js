@@ -35,6 +35,43 @@ import {
   stamp,
 } from './ledger.js'
 
+/**
+ * 「连文件夹一起删」的安全闸。
+ *
+ * 只有真的像个项目目录才肯动手：空路径、盘符根、用户主目录、数据文件所在的目录
+ * 一律拒绝（返回 null），免得一次误点把整个盘或者清单自己的数据删掉。
+ */
+const safePurgePath = (rawPath, dataFile) => {
+  const raw = String(rawPath ?? '').trim()
+  if (raw === '') return null
+  let resolved
+  try {
+    resolved = path.resolve(raw)
+  } catch {
+    return null
+  }
+  // C:\ 、D:\ 这种根目录
+  if (path.dirname(resolved) === resolved) return null
+  // 盘符根：C: 这类（path.parse().root 与自身相等）
+  if (resolved === path.parse(resolved).root) return null
+  // 用户主目录本身
+  try {
+    if (resolved.toLowerCase() === path.resolve(os.homedir()).toLowerCase()) return null
+  } catch { /* 忽略 */ }
+  // 清单自己的数据文件 / 它的父目录
+  try {
+    const dataDir = path.resolve(path.dirname(dataFile))
+    if (dataDir === resolved || dataDir.startsWith(resolved + path.sep)) return null
+  } catch { /* 忽略 */ }
+  try {
+    const stat = fs.statSync(resolved)
+    if (!stat.isDirectory()) return null
+  } catch {
+    return null
+  }
+  return resolved
+}
+
 class ApiError extends Error {
   constructor(status, message) {
     super(message)
@@ -534,22 +571,46 @@ $owner.Close()
         }),
       },
     })],
-    ['DELETE', /^\/projects\/([^/]+)$/, async ({ params }) => ({
-      status: 200,
-      body: {
-        ok: true,
-        removed: await mutate(file, (state) => {
-          const id = params[0]
-          if (!state.projects.some((item) => item.id === id)) throw missing('项目不存在')
-          const categories = state.categories.filter((item) => item.projectId === id).map((item) => item.id)
-          const tasks = state.tasks.filter((task) => categories.includes(task.categoryId)).length
-          state.projects = state.projects.filter((item) => item.id !== id)
-          state.categories = state.categories.filter((item) => item.projectId !== id)
-          state.tasks = state.tasks.filter((task) => !categories.includes(task.categoryId))
-          return { categories: categories.length, tasks }
-        }),
-      },
-    })],
+    ['DELETE', /^\/projects\/([^/]+)$/, async ({ params, query }) => {
+      // ?files=1 时连磁盘上的项目文件夹一起删（界面那边会二次确认）。
+      const wantsFiles = String(query?.get?.('files') ?? '') === '1'
+      const snapshot = await read(file)
+      const target = snapshot.projects.find((item) => item.id === params[0])
+      if (target === undefined) throw missing('项目不存在')
+      const purgePath = wantsFiles ? safePurgePath(target.path, file) : null
+      const removed = await mutate(file, (state) => {
+        const id = params[0]
+        if (!state.projects.some((item) => item.id === id)) throw missing('项目不存在')
+        const categories = state.categories.filter((item) => item.projectId === id).map((item) => item.id)
+        const tasks = state.tasks.filter((task) => categories.includes(task.categoryId)).length
+        state.projects = state.projects.filter((item) => item.id !== id)
+        state.categories = state.categories.filter((item) => item.projectId !== id)
+        state.tasks = state.tasks.filter((task) => !categories.includes(task.categoryId))
+        return { categories: categories.length, tasks }
+      })
+      let purged = null
+      let purgeError = null
+      if (purgePath !== null) {
+        try {
+          await fs.promises.rm(purgePath, { recursive: true, force: true, maxRetries: 2 })
+          purged = purgePath
+        } catch (error) {
+          purgeError = String(error?.message ?? error)
+        }
+      }
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          removed,
+          purged,
+          purgeError,
+          // 想删但被安全闸挡住时，告诉界面为什么。
+          filesRequested: wantsFiles,
+          skipped: wantsFiles && purgePath === null ? '这个路径不能整目录删除（盘符根 / 主目录 / 数据目录 / 不存在）' : null,
+        },
+      }
+    }],
 
     ['POST', /^\/categories$/, async ({ body }) => ({ status: 201, body: { ok: true, category: await addCategory(body) } })],
     ['PATCH', /^\/categories\/([^/]+)$/, async ({ body, params }) => ({

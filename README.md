@@ -95,6 +95,8 @@ PATCH /api/projects/{id}  { "warnHours": 1 }     // 改项目默认
 
 置顶只影响显示顺序，不改进度、不改统计。
 
+删除项目会弹两次确认：第一次问要不要「同时删除磁盘上的项目文件夹」，勾上之后再弹一次「永久删除」，第二次点下去才真的动磁盘。默认不勾，只删清单里的记录。
+
 右键（项目行 / 分类头 / 工作行上）是功能入口：
 
 - **项目**：置顶、新建分类、项目设置、打开文件夹、删除项目
@@ -210,6 +212,36 @@ test/smoke.mjs        端到端冒烟：65 项断言
 **改完 `ui/app.js` 必须跑 `node bin/build.js`**，`client.js` 是生成物（大小随界面变，别记数字），
 直接手改会被下一次构建覆盖。仓库里提交生成物，是为了 clone 下来不用先构建就能装。
 
+## 删除项目与磁盘清理
+
+删项目有两种删法：
+
+| 怎么删 | 清单里的记录 | 磁盘上的项目文件夹 |
+| --- | --- | --- |
+| 直接「删除项目」 | 删 | 保留 |
+| 勾上「同时删除磁盘上的项目文件夹」 | 删 | **永久删除**（不进回收站） |
+
+勾上之后要再点一次「永久删除」才生效——这一步不可撤销，所以故意做成两下。
+
+安全闸在 `core/api.js` 的 `safePurgePath()`：盘符根（`C:`）、用户主目录、清单自己的数据文件所在目录（及其上级）、不是已存在目录的，一律不删，返回 `skipped` 告诉界面为什么没删。路径为空的项目（只做清单不绑文件夹）本来就没有可删的。
+
+```bash
+# 只删记录
+curl -X DELETE http://127.0.0.1:7419/api/projects/<id>
+# 连文件夹一起删
+curl -X DELETE "http://127.0.0.1:7419/api/projects/<id>?files=1"
+```
+
+返回：
+
+```json
+{ "ok": true, "removed": { "categories": 4, "tasks": 9 },
+  "purged": "D:\work\my-project", "purgeError": null,
+  "filesRequested": true, "skipped": null }
+```
+
+`purged` 是真正删掉的路径，`skipped` 是被安全闸拦下的原因，`purgeError` 是删的时候系统报的错（比如文件被占用）。
+
 ## 接口
 
 `core/api.js` 里的路由表，前缀由宿主给：
@@ -222,7 +254,7 @@ POST   /fs/mkdir              { parent, name } 新建文件夹，返回新路径
 POST   /fs/pick               弹系统选目录对话框，返回 { path }（取消是 null；只在 Windows 上有）
 POST   /projects              { title, path?, color? }
 PATCH  /projects/:id          { title?, path?, color? } 改名时项目文件夹跟着改（文件夹名 == 旧项目名时）
-DELETE /projects/:id          连带分类和工作
+DELETE /projects/:id          连带分类和工作；加 ?files=1 连磁盘上的项目文件夹一起删
 POST   /projects/:id/open     用系统文件管理器打开项目目录
 POST   /categories            { projectId, title, color? } 会顺手在项目文件夹里建同名文件夹 + txt
 PATCH  /categories/:id        { title?, color?, pinned? } 改名时文件夹和 txt 一起改

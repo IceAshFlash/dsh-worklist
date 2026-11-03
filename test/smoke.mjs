@@ -258,6 +258,26 @@ try {
   check('可以归档项目', projArch.payload.project?.archived === true)
   await call('PATCH', `/projects/${projectId}`, { archived: false })
 
+  // 删除项目时连文件夹一起删（?files=1）
+  const purgeProj = await call('POST', '/projects', { title: '删除试验', path: path.join(FS_ROOT, 'purge') })
+  const purgeId = purgeProj.payload.project?.id
+  await call('POST', '/categories', { projectId: purgeId, title: '要删的分类' })
+  check('删除前文件夹在', fs.existsSync(path.join(FS_ROOT, 'purge', '要删的分类')), path.join(FS_ROOT, 'purge'))
+  const purged = await call('DELETE', `/projects/${purgeId}?files=1`)
+  check('可以连文件夹一起删', purged.status === 200 && purged.payload.purged !== null && !fs.existsSync(path.join(FS_ROOT, 'purge')), `purged=${purged.payload.purged}`)
+  check('连文件夹删的项目也没了', (await call('GET', '/state')).payload.state.projects.every((p) => p.id !== purgeId))
+
+  // 安全闸：盘符根、不存在、空路径都不许整目录删
+  const rootProj = await call('POST', '/projects', { title: '根目录试验', path: path.parse(FS_ROOT).root })
+  const rootDel = await call('DELETE', `/projects/${rootProj.payload.project?.id}?files=1`)
+  check('盘符根不会被删掉', rootDel.payload.purged === null && typeof rootDel.payload.skipped === 'string', `skipped=${rootDel.payload.skipped}`)
+  const ghostPath = path.join(FS_ROOT, 'no-such-dir')
+  const ghostProj = await call('POST', '/projects', { title: '不存在试验', path: ghostPath })
+  // 建项目时会顺手把默认分类的文件夹建出来，先手动删掉，模拟「目录已经不在了」
+  fs.rmSync(ghostPath, { recursive: true, force: true })
+  const ghostDel = await call('DELETE', `/projects/${ghostProj.payload.project?.id}?files=1`)
+  check('不存在的目录跳过', ghostDel.payload.purged === null, `skipped=${ghostDel.payload.skipped}`)
+
   const removed = await call('DELETE', `/projects/${projectId}`)
   check('删项目（级联）', removed.status === 200, `status=${removed.status}`)
   await call('DELETE', `/projects/${otherId}`)

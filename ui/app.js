@@ -20,6 +20,7 @@
     '.wl-side{width:232px;flex:0 0 232px;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--dsw-alias-border-l1,#e6e8eb);background:var(--dsw-alias-bg-layer-1,#fafbfc)}',
     '.wl-side-head{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 8px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#5b6470)}',
     '.wl-side-list{flex:1 1 auto;overflow-y:auto;padding:0 8px 12px}',
+    '.wl-check-row{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer}',
     '.wl-arch-btn{margin-left:auto;margin-right:2px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:transparent;color:var(--dsw-alias-label-secondary,#5b6470);border-radius:6px;padding:1px 6px;font-size:11px;line-height:16px;cursor:pointer;font-family:inherit}',
     '.wl-arch-btn:hover{background:var(--dsw-alias-bg-layer-2,#f0f2f5)}',
     '.wl-arch-btn.is-on{color:var(--wl-accent);border-color:var(--wl-accent)}',
@@ -835,19 +836,83 @@
       })
     }
 
+    /*
+     * 删除项目：默认只删清单里的条目。
+     * 勾上「同时删除磁盘上的项目文件夹」会再弹一次确认（重复确认），
+     * 第二次点下去才真的动磁盘 —— 这个操作不进回收站。
+     */
     var deleteProject = function (project) {
-      openConfirm({
-        title: '删除项目',
-        message: '「' + project.title + '」和它下面的分类、工作会一起删掉。数据文件里不会留备份。',
-        onOk: function () {
-          request('DELETE', '/projects/' + encodeURIComponent(project.id))
-            .then(function () {
-              if (view.selectedProjectId === project.id) view.selectedProjectId = null
-              return refresh()
+      var hasPath = typeof project.path === 'string' && project.path !== ''
+      var withFiles = false
+
+      var run = function (purge) {
+        request('DELETE', '/projects/' + encodeURIComponent(project.id) + (purge ? '?files=1' : ''))
+          .then(function (payload) {
+            if (view.selectedProjectId === project.id) view.selectedProjectId = null
+            var note = ''
+            if (purge && payload && payload.skipped) note = '没有删文件夹：' + payload.skipped
+            else if (purge && payload && payload.purgeError) note = '文件夹没删干净：' + payload.purgeError
+            else if (purge && payload && payload.purged) note = '项目已删除，文件夹也删了：' + payload.purged
+            return refresh().then(function () {
+              if (note !== '') notifyError(note)
             })
-            .catch(function (error) { notifyError(error) })
-        },
+          })
+          .catch(function (error) { notifyError(error) })
+      }
+
+      var askAgain = function () {
+        openConfirm({
+          title: '再确认一次：这会删掉磁盘上的文件',
+          message: '整个文件夹会被永久删除，不进回收站，也无法撤销：
+
+' + project.path,
+          okLabel: '永久删除',
+          onOk: function () { run(true) },
+        })
+      }
+
+      var warn = h('div', {
+        class: 'wl-hint',
+        style: { color: 'var(--wl-danger)', marginTop: '8px', display: 'none' },
+        text: project.path,
       })
+      var toggle = hasPath ? h('label', { class: 'wl-check-row' },
+        h('input', {
+          type: 'checkbox',
+          onchange: function () {
+            withFiles = this.checked === true
+            warn.style.display = withFiles ? '' : 'none'
+          },
+        }),
+        h('span', { text: '同时删除磁盘上的项目文件夹' })
+      ) : null
+
+      var ok = h('button', {
+        class: 'wl-btn is-danger',
+        onclick: function () {
+          closeModal()
+          if (withFiles) { askAgain(); return }
+          run(false)
+        },
+      }, '删除项目')
+      openMask(h('div', { class: 'wl-win' },
+        h('div', { class: 'wl-win-head' },
+          h('span', { text: '删除项目' }),
+          h('span', { class: 'wl-grow' }),
+          h('button', { class: 'wl-icon', title: '关闭', onclick: closeModal }, '×')
+        ),
+        h('div', { class: 'wl-win-body' },
+          h('div', { class: 'wl-hint', text: '「' + project.title + '」和它下面的分类、工作会一起删掉。' }),
+          toggle,
+          warn
+        ),
+        h('div', { class: 'wl-win-foot' },
+          h('span', { class: 'wl-grow' }),
+          h('button', { class: 'wl-btn', onclick: closeModal }, '取消'),
+          ok
+        )
+      ))
+      ok.focus()
     }
 
     var openProjectMenu = function (event, project) {

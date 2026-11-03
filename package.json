@@ -1,6 +1,6 @@
 {
   "name": "dsh-worklist",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "description": "工作清单：项目 → 分类 → 工作单项的三级看板，带加权进度与 DSH 侧栏面板，同一份数据还能脱离 DSH 单独打开。",
   "license": "MIT",
