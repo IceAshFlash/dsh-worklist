@@ -29,6 +29,19 @@
     '.wl-proj-meta{margin-top:4px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
     '.wl-main{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0}',
     '.wl-top{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--dsw-alias-border-l1,#e6e8eb)}',
+    '.wl-top-wrap{flex:0 0 auto;border-bottom:1px solid var(--dsw-alias-border-l1,#e6e8eb)}',
+    '.wl-top-wrap .wl-top{border-bottom:0}',
+    '.wl-top-sub{display:flex;align-items:center;gap:8px;padding:0 18px 10px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
+    '.wl-top-subbtn{border:0;background:transparent;padding:0;font:inherit;font-size:11px;color:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;border-radius:6px}',
+    '.wl-top-subbtn:hover{color:var(--dsw-alias-label-secondary,#5b6470)}',
+    '.wl-menu{position:fixed;z-index:1000;min-width:158px;padding:4px;border-radius:9px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);box-shadow:0 10px 28px rgba(15,23,42,.18)}',
+    '.wl-menu-item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:6px;font:inherit;font-size:12px;color:inherit;cursor:pointer;white-space:nowrap}',
+    '.wl-menu-item:hover{background:var(--dsw-alias-bg-layer-2,#eef1f5)}',
+    '.wl-menu-item.is-danger{color:var(--wl-danger,#e5484d)}',
+    '.wl-menu-item[disabled]{opacity:.4;cursor:default}',
+    '.wl-menu-sep{height:1px;margin:4px 6px;background:var(--dsw-alias-border-l1,#e6e9ee)}',
+    '.wl-pin{flex:0 0 auto;font-size:10px;line-height:1;color:var(--wl-accent);opacity:.95}',
+    '.wl-proj.is-pinned{box-shadow:inset 2px 0 0 var(--wl-accent)}',
     '.wl-title{font-size:15px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-sub{font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c);white-space:nowrap}',
     '.wl-grow{flex:1 1 auto}',
@@ -332,20 +345,27 @@
       projects.forEach(function (item) {
         var active = item.id === view.selectedProjectId
         var button = h('button', {
-          class: 'wl-proj' + (active ? ' is-active' : ''),
+          class: 'wl-proj' + (active ? ' is-active' : '') + (item.pinned ? ' is-pinned' : ''),
           onclick: function () {
             view.selectedProjectId = item.id
             render()
           },
+          oncontextmenu: function (event) {
+            event.preventDefault()
+            event.stopPropagation()
+            openProjectMenu(event, item)
+          },
         },
         h('div', { class: 'wl-proj-top' },
           h('span', { class: 'wl-dot', style: { background: item.color } }),
+          item.pinned ? h('span', { class: 'wl-pin', title: '已置顶', text: '📌' }) : null,
           h('span', { class: 'wl-proj-name', text: item.title, title: item.title }),
           h('span', { class: 'wl-sub', text: pct(item.progress) })
         ),
         h('div', { class: 'wl-proj-meta' },
           bar(item.progress, '56px'),
           h('span', { text: item.openCount + '/' + item.taskCount }),
+          item.warningCount > 0 ? h('span', { class: 'wl-chip is-warn', text: 'DDL ' + item.warningCount, title: '进入预警窗口、还没做完的工作数' }) : null,
           item.due === 'overdue' ? h('span', { class: 'wl-chip is-overdue', text: '逾期' }) : null
         ))
         list.appendChild(button)
@@ -356,8 +376,10 @@
 
     var renderTop = function (project) {
       var top = h('div', { class: 'wl-top' })
+      var wrap = h('div', { class: 'wl-top-wrap' })
       if (project !== null) {
         top.appendChild(h('span', { class: 'wl-dot', style: { background: project.color, width: '10px', height: '10px' } }))
+        if (project.pinned) top.appendChild(h('span', { class: 'wl-pin', title: '已置顶', text: '📌' }))
         top.appendChild(h('span', { class: 'wl-title', text: project.title, title: project.title }))
         top.appendChild(bar(project.progress, '90px'))
         top.appendChild(h('span', { class: 'wl-sub', text: pct(project.progress) + ' · ' + project.openCount + '/' + project.taskCount }))
@@ -390,7 +412,28 @@
         title: view.dataFile === '' ? '刷新' : view.dataFile,
         onclick: function () { refresh() },
       }, '刷新'))
-      return top
+      wrap.appendChild(top)
+      if (project !== null) {
+        // 进度条下面这行就是「DDL 工作数目」：点一下跳到预警分类。
+        var ddlId = project.ddlCategoryId
+        wrap.appendChild(h('div', { class: 'wl-top-sub' },
+          h('button', {
+            class: 'wl-top-subbtn',
+            title: '进入预警窗口、还没做完的工作；点一下跳到 DDL预警',
+            onclick: function () {
+              if (ddlId === null) return
+              view.expanded[ddlId] = true
+              render()
+              var node = root.querySelector('[data-cat="' + ddlId + '"]')
+              if (node !== null && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' })
+            },
+          },
+            h('span', { class: 'wl-chip is-warn', text: 'DDL 工作 ' + project.warningCount + ' 项' }),
+            h('span', { text: project.warningCount > 0 ? '按各自的预警线收进来的' : '暂时没有撞线的' })
+          )
+        ))
+      }
+      return wrap
     }
 
     var renderScroll = function (project) {
@@ -446,8 +489,15 @@
     var renderCategory = function (project, category) {
       var isDdl = category.kind === 'ddl'
       var open = view.expanded[category.id] !== false
-      var box = h('div', { class: 'wl-cat' + (isDdl ? ' is-ddl' : '') })
-      var head = h('div', { class: 'wl-cat-head' },
+      var box = h('div', { class: 'wl-cat' + (isDdl ? ' is-ddl' : ''), dataset: { cat: category.id } })
+      var head = h('div', {
+        class: 'wl-cat-head',
+        oncontextmenu: function (event) {
+          event.preventDefault()
+          event.stopPropagation()
+          openCategoryMenu(event, project, category)
+        },
+      },
         h('button', {
           class: 'wl-icon',
           title: open ? '收起' : '展开',
@@ -458,6 +508,7 @@
           },
         }, open ? '▾' : '▸'),
         h('span', { class: 'wl-dot', style: { background: category.color } }),
+        !isDdl && category.pinned ? h('span', { class: 'wl-pin', title: '已置顶', text: '📌' }) : null,
         h('span', { class: 'wl-cat-name', text: category.title, title: isDdl ? '自动收录撞上预警线的工作，不能改名或删除' : category.title }),
         isDdl ? h('span', { class: 'wl-cat-hint', text: '自动收录' }) : null,
         bar(category.progress, '64px'),
@@ -520,7 +571,14 @@
       var isClone = Boolean(task.cloneOf)
       var expanded = view.expanded['t:' + realId] === true
       var wrap = h('div')
-      var row = h('div', { class: 'wl-task' + (done ? ' is-done' : '') + (isClone ? ' is-clone' : '') },
+      var row = h('div', {
+        class: 'wl-task' + (done ? ' is-done' : '') + (isClone ? ' is-clone' : ''),
+        oncontextmenu: function (event) {
+          event.preventDefault()
+          event.stopPropagation()
+          openTaskMenu(event, category, task)
+        },
+      },
         h('button', {
           class: 'wl-check' + (done ? ' is-on' : ''),
           title: done ? '标记为未完成' : '标记为完成',
@@ -549,6 +607,7 @@
           },
         }),
         isClone && originTitle(task) !== '' ? h('span', { class: 'wl-chip', text: '来自 ' + originTitle(task) }) : null,
+        task.pinned ? h('span', { class: 'wl-pin', title: '已置顶', text: '📌' }) : null,
         task.warnOwn ? h('span', { class: 'wl-chip is-warn', text: '预警 ' + hoursLabel(task.warnHours) }) : null,
         task.steps.length > 0 ? h('span', { class: 'wl-chip', text: task.steps.filter(function (s) { return s.done }).length + '/' + task.steps.length }) : null,
         h('span', { class: 'wl-chip', text: 'w' + task.weight }),
@@ -591,6 +650,210 @@
         wrap.appendChild(steps)
       }
       return wrap
+    }
+
+    /* ---------------- 右键菜单 / 确认框 ---------------- */
+
+    var menu = null
+    var detachMenu = function () {
+      doc.removeEventListener('click', closeMenu, true)
+      doc.removeEventListener('contextmenu', closeMenu, true)
+      doc.removeEventListener('keydown', menuKey, true)
+    }
+    var closeMenu = function (event) {
+      if (menu === null) return
+      // 捕获阶段的全局监听也会收到「菜单自己的」点击；那一下交给菜单项自己处理。
+      if (event && event.target && menu.contains(event.target)) return
+      if (menu.parentNode !== null) menu.parentNode.removeChild(menu)
+      menu = null
+      detachMenu()
+    }
+    var menuKey = function (event) {
+      if (event.key === 'Escape') closeMenu()
+    }
+
+    var openMenu = function (event, items) {
+      closeMenu()
+      var box = h('div', { class: 'wl-menu' })
+      items.forEach(function (item) {
+        if (item === '-') {
+          box.appendChild(h('div', { class: 'wl-menu-sep' }))
+          return
+        }
+        box.appendChild(h('button', {
+          class: 'wl-menu-item' + (item.danger ? ' is-danger' : ''),
+          disabled: item.disabled === true ? true : undefined,
+          onclick: function (ev) {
+            ev.stopPropagation()
+            closeMenu()
+            if (item.disabled === true) return
+            item.run()
+          },
+        }, item.label))
+      })
+      // 先挂上去量一下尺寸，再摆位置，免得贴边溢出。
+      box.style.left = '-9999px'
+      box.style.top = '0px'
+      doc.body.appendChild(box)
+      var rect = box.getBoundingClientRect()
+      var x = Math.max(4, Math.min(event.clientX, window.innerWidth - rect.width - 8))
+      var y = Math.max(4, Math.min(event.clientY, window.innerHeight - rect.height - 8))
+      box.style.left = x + 'px'
+      box.style.top = y + 'px'
+      menu = box
+      // 捕获阶段挂监听：点别处、再右键、按 Esc 都关掉。
+      setTimeout(function () {
+        doc.addEventListener('click', closeMenu, true)
+        doc.addEventListener('contextmenu', closeMenu, true)
+        doc.addEventListener('keydown', menuKey, true)
+      }, 0)
+    }
+
+    var openConfirm = function (options) {
+      var config = options || {}
+      var ok = h('button', {
+        class: 'wl-btn is-danger',
+        onclick: function () {
+          closeModal()
+          if (typeof config.onOk === 'function') config.onOk()
+        },
+      }, config.okLabel || '删除')
+      openMask(h('div', { class: 'wl-win' },
+        h('div', { class: 'wl-win-head' },
+          h('span', { text: config.title || '确认' }),
+          h('span', { class: 'wl-grow' }),
+          h('button', { class: 'wl-icon', title: '关闭', onclick: closeModal }, '×')
+        ),
+        h('div', { class: 'wl-win-body' },
+          h('div', { class: 'wl-hint', text: config.message || '' })
+        ),
+        h('div', { class: 'wl-win-foot' },
+          h('span', { class: 'wl-grow' }),
+          h('button', { class: 'wl-btn', onclick: closeModal }, '取消'),
+          ok
+        )
+      ))
+      ok.focus()
+    }
+
+    /* ---------------- 右键菜单内容 ---------------- */
+
+    var setPinned = function (collection, id, pinned) {
+      return request('PATCH', '/' + collection + '/' + encodeURIComponent(id), { pinned: pinned })
+        .then(function () { return refresh() })
+        .catch(function (error) { notifyError(error) })
+    }
+
+    var toggleDone = function (realId, task, nextDone) {
+      var patch = { done: nextDone }
+      if (task.steps.length > 0) {
+        patch.steps = task.steps.map(function (step) {
+          return { id: step.id, title: step.title, weight: step.weight, done: nextDone }
+        })
+      }
+      request('PATCH', '/tasks/' + encodeURIComponent(realId), patch)
+        .then(function () { return refresh() })
+        .catch(function (error) { notifyError(error) })
+    }
+
+    var deleteTask = function (task) {
+      openConfirm({
+        title: '删除工作',
+        message: '「' + task.title + '」会从清单里删掉，连带它的步骤。',
+        onOk: function () {
+          request('DELETE', '/tasks/' + encodeURIComponent(task.id))
+            .then(function () { return refresh() })
+            .catch(function (error) { notifyError(error) })
+        },
+      })
+    }
+
+    var deleteCategory = function (category) {
+      openConfirm({
+        title: '删除分类',
+        message: '「' + category.title + '」和它下面的 ' + category.taskCount + ' 条工作会一起删掉。',
+        onOk: function () {
+          request('DELETE', '/categories/' + encodeURIComponent(category.id))
+            .then(function () { return refresh() })
+            .catch(function (error) { notifyError(error) })
+        },
+      })
+    }
+
+    var deleteProject = function (project) {
+      openConfirm({
+        title: '删除项目',
+        message: '「' + project.title + '」和它下面的分类、工作会一起删掉。数据文件里不会留备份。',
+        onOk: function () {
+          request('DELETE', '/projects/' + encodeURIComponent(project.id))
+            .then(function () {
+              if (view.selectedProjectId === project.id) view.selectedProjectId = null
+              return refresh()
+            })
+            .catch(function (error) { notifyError(error) })
+        },
+      })
+    }
+
+    var openProjectMenu = function (event, project) {
+      var items = [
+        { label: project.pinned ? '取消置顶' : '置顶项目', run: function () { setPinned('projects', project.id, !project.pinned) } },
+        '-',
+        { label: '新建分类…', run: function () { openCategoryModal(project) } },
+        { label: '项目设置…', run: function () { openProjectModal(project) } },
+      ]
+      if (project.path !== '') {
+        items.push('-')
+        items.push({
+          label: '打开文件夹',
+          run: function () {
+            request('POST', '/projects/' + encodeURIComponent(project.id) + '/open')
+              .catch(function (error) { notifyError(error) })
+          },
+        })
+      }
+      items.push('-')
+      items.push({ label: '删除项目…', danger: true, run: function () { deleteProject(project) } })
+      openMenu(event, items)
+    }
+
+    var openCategoryMenu = function (event, project, category) {
+      var open = view.expanded[category.id] !== false
+      if (category.kind === 'ddl') {
+        openMenu(event, [
+          { label: open ? '折叠' : '展开', run: function () { view.expanded[category.id] = !open; render() } },
+          '-',
+          { label: '默认预警时间…', run: function () { openWarnModal(project) } },
+        ])
+        return
+      }
+      openMenu(event, [
+        { label: category.pinned ? '取消置顶' : '置顶分类', run: function () { setPinned('categories', category.id, !category.pinned) } },
+        '-',
+        { label: '新建工作…', run: function () { openTaskModal(null, category) } },
+        { label: '重命名分类…', run: function () { openCategoryModal(project, category) } },
+        '-',
+        { label: '删除分类…', danger: true, run: function () { deleteCategory(category) } },
+      ])
+    }
+
+    var openTaskMenu = function (event, category, task) {
+      var realId = task.cloneOf || task.id
+      var real = view.data === null ? null : (view.data.tasks || []).filter(function (item) { return item.id === realId })[0]
+      var home = category
+      if (real !== null && view.data !== null) {
+        var found = (view.data.categories || []).filter(function (item) { return item.id === real.categoryId })[0]
+        if (found !== undefined) home = found
+      }
+      var done = task.progress >= 1
+      openMenu(event, [
+        { label: task.pinned ? '取消置顶' : '置顶工作', run: function () { setPinned('tasks', realId, !task.pinned) } },
+        { label: done ? '标记为未完成' : '标记为完成', run: function () { toggleDone(realId, task, !done) } },
+        '-',
+        { label: '编辑…', disabled: real === null, run: function () { if (real !== null) openTaskModal(real, home) } },
+        '-',
+        { label: '删除工作…', danger: true, run: function () { deleteTask(real === null ? task : real) } },
+      ])
     }
 
     /* ---------------- 二级窗口（新建/编辑工作） ---------------- */

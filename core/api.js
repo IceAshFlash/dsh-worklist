@@ -154,6 +154,7 @@ export const createApi = ({ file, aiSplit = null, openFolder = null, now = () =>
     if (body.dueAt !== undefined) task.dueAt = toTimestamp(body.dueAt)
     // 传 null / 空串 = 回到"跟随项目默认"。
     if (body.warnHours !== undefined) task.warnHours = taskWarnHours(body.warnHours)
+    if (body.pinned !== undefined) task.pinned = body.pinned === true
     if (body.categoryId !== undefined) {
       const categoryId = requireText(body.categoryId, 'categoryId')
       const target = state.categories.find((category) => category.id === categoryId)
@@ -432,6 +433,7 @@ $owner.Close()
           if (body.color !== undefined) project.color = text(body.color) || project.color
           if (body.note !== undefined) project.note = text(body.note)
           if (body.warnHours !== undefined) project.warnHours = clampWarnHours(body.warnHours)
+          if (body.pinned !== undefined) project.pinned = body.pinned === true
           return project
         }),
       },
@@ -465,6 +467,7 @@ $owner.Close()
           if (body.title !== undefined) category.title = requireText(body.title, '分类名')
           if (body.color !== undefined) category.color = text(body.color) || category.color
           if (body.collapsed !== undefined) category.collapsed = body.collapsed === true
+          if (body.pinned !== undefined) category.pinned = body.pinned === true
           if (body.order !== undefined) category.order = num(body.order, category.order)
           return category
         }),

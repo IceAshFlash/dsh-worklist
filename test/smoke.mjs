@@ -188,6 +188,30 @@ try {
   const noAi = await call('POST', '/ai-split', { title: '随便', steps: [] })
   check('独立模式没有 AI 拆分（明确拒绝）', noAi.status === 501, `status=${noAi.status} ${noAi.payload.error ?? ''}`)
 
+  const firstCat = projectOf(state)?.categories?.[0]
+  check('DDL预警 永远排第一', firstCat?.kind === 'ddl', `first=${firstCat?.title}`)
+
+  await call('PATCH', `/categories/${categoryId}`, { pinned: true })
+  state = (await call('GET', '/state')).payload.state
+  const order = (projectOf(state)?.categories ?? []).map((item) => (item.kind === 'ddl' ? 'ddl' : item.title))
+  check('置顶分类排在 DDL 之后、其它分类之前', order[0] === 'ddl' && order[1] === '开发（改名）', `order=${order.join(' / ')}`)
+
+  const pinnedTask = await call('POST', '/tasks', { categoryId, title: '置顶的那条' })
+  const pinnedTaskId = pinnedTask.payload.task?.id
+  await call('PATCH', `/tasks/${pinnedTaskId}`, { pinned: true })
+  state = (await call('GET', '/state')).payload.state
+  const tasksNow = categoryById(state, categoryId)?.tasks ?? []
+  check('置顶工作排到本分类第一', tasksNow[0]?.id === pinnedTaskId && tasksNow[0]?.pinned === true, `first=${tasksNow[0]?.title}`)
+
+  const otherProj = await call('POST', '/projects', { title: '另一个项目' })
+  const otherId = otherProj.payload.project?.id
+  await call('PATCH', `/projects/${otherId}`, { pinned: true })
+  state = (await call('GET', '/state')).payload.state
+  check('置顶项目排到最前', state.projects?.[0]?.id === otherId && state.projects?.[0]?.pinned === true, `first=${state.projects?.[0]?.title}`)
+
+  const noPin = await call('PATCH', `/tasks/${pinnedTaskId}`, { pinned: false })
+  check('可以取消置顶', noPin.payload.task?.pinned === false, `pinned=${String(noPin.payload.task?.pinned)}`)
+
   const bad = await call('POST', '/projects', { title: '' })
   check('空名字被拒', bad.status === 400, `status=${bad.status}`)
 
@@ -196,6 +220,7 @@ try {
 
   const removed = await call('DELETE', `/projects/${projectId}`)
   check('删项目（级联）', removed.status === 200, `status=${removed.status}`)
+  await call('DELETE', `/projects/${otherId}`)
   state = (await call('GET', '/state')).payload.state
   check('级联删干净', state.projects?.length === 0 && state.categories?.length === 0 && state.tasks?.length === 0)
 } catch (error) {

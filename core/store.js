@@ -215,7 +215,7 @@ export const decorate = (state, now = Date.now()) => {
     )
     const hits = tasks
       .filter((task) => sources.has(task.categoryId) && task.progress < 1 && isWarning(task, task.warnHours, now))
-      .sort((a, b) => a.dueAt - b.dueAt)
+      .sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1) || a.dueAt - b.dueAt)
       .map((task) => ({
         ...task,
         id: 'ddl:' + task.id,
@@ -267,8 +267,8 @@ export const decorate = (state, now = Date.now()) => {
       ...project,
       warnHours: clampWarnHours(project.warnHours),
       progress,
-      // DDL预警 排在最后（order 90）；它不参与项目进度，但要显示出来。
-      categories: (byProject.get(project.id) ?? []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.createdAt - b.createdAt),
+      // DDL预警 永远置顶（它不参与项目进度，但要最先看到）；其余按置顶、order 排。
+      categories: (byProject.get(project.id) ?? []).sort(sortCategories),
       ddlCategoryId: ddl?.id ?? null,
       warningCount: ddl?.taskCount ?? 0,
       taskCount: allTasks.length,
@@ -279,6 +279,8 @@ export const decorate = (state, now = Date.now()) => {
   })
 
   const allTasks = tasks
+  // 项目列表：置顶的在前，其余按创建时间。
+  projects.sort((a, b) => (a.pinned === b.pinned ? 0 : a.pinned ? -1 : 1) || (a.createdAt ?? 0) - (b.createdAt ?? 0))
   return {
     version: state.version ?? SCHEMA_VERSION,
     updatedAt: state.updatedAt ?? 0,
@@ -297,8 +299,18 @@ export const decorate = (state, now = Date.now()) => {
   }
 }
 
-/** 排序：DLL 越近越靠前，其次权重大的靠前，完成的沉底。 */
+/** 分类排序：DDL预警 永远第一，然后置顶的、再按 order。 */
+function sortCategories(a, b) {
+  const rankA = a.kind === 'ddl' ? 0 : 1
+  const rankB = b.kind === 'ddl' ? 0 : 1
+  if (rankA !== rankB) return rankA - rankB
+  if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+  return (a.order ?? 0) - (b.order ?? 0) || (a.createdAt ?? 0) - (b.createdAt ?? 0)
+}
+
+/** 排序：置顶的在最前，然后 DDL 越近越靠前，其次权重大的靠前，完成的沉底。 */
 function sortTasks(a, b) {
+  if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
   if (a.progress >= 1 !== b.progress >= 1) return a.progress >= 1 ? 1 : -1
   const aDue = Number.isFinite(a.dueAt) ? a.dueAt : Number.MAX_SAFE_INTEGER
   const bDue = Number.isFinite(b.dueAt) ? b.dueAt : Number.MAX_SAFE_INTEGER
@@ -336,6 +348,7 @@ const sanitizeTask = (raw) => {
     // null = 跟随项目默认；数字 = 这条工作自己的预警时长。
     warnHours: taskWarnHours(task.warnHours),
     steps: Array.isArray(task.steps) ? task.steps.map(sanitizeStep) : [],
+    pinned: task.pinned === true,
     createdAt,
     updatedAt: toTimestamp(task.updatedAt) ?? createdAt,
   }
@@ -354,6 +367,8 @@ const sanitizeCategory = (raw) => {
     locked: kind === 'ddl',
     order: toNumber(category.order, 0),
     collapsed: category.collapsed === true,
+    // DDL预警 是系统分类，永远排第一，pinned 对它没有意义但保留字段。
+    pinned: kind === 'ddl' ? true : category.pinned === true,
     createdAt: toTimestamp(category.createdAt) ?? Date.now(),
   }
 }
@@ -366,6 +381,7 @@ const sanitizeProject = (raw) => {
     path: str(project.path),
     color: str(project.color) || PALETTE[0],
     note: str(project.note),
+    pinned: project.pinned === true,
     warnHours: clampWarnHours(project.warnHours),
     // 脚手架版本：2 = 已经有三个默认分类 + DDL预警。老数据靠它补一次，补完就不再补，
     // 这样用户把默认分类删光也不会每次加载又冒出来。

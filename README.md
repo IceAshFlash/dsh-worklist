@@ -35,9 +35,9 @@ plugin_manager({ action: 'install_bundle', target: 'C:\\path\\to\\dsh-worklist' 
 ## 数据模型
 
 ```
-project { id, title, path, color, warnHours, scaffold, createdAt }
-  category { id, projectId, title, color, order, kind: normal|ddl, locked }
-    task { id, categoryId, title, weight, done, dueAt, warnHours, steps[], createdAt, updatedAt }
+project { id, title, path, color, pinned, warnHours, scaffold, createdAt }
+  category { id, projectId, title, color, order, pinned, kind: normal|ddl, locked }
+    task { id, categoryId, title, weight, done, pinned, dueAt, warnHours, steps[], createdAt, updatedAt }
       step { id, title, weight, done }
 ```
 
@@ -82,6 +82,32 @@ PATCH /api/projects/{id}  { "warnHours": 1 }     // 改项目默认
 每条按自己的线进线出场，`cloneOf` 字段里的克隆会带上它自己的 `warnHours` 和 `warnOwn`。
 
 老数据（0.1.x 建的）第一次读进来会补一次这四个分类，之后再删默认分类就不会反复冒出来。
+
+### 置顶与右键菜单
+
+项目、分类、工作三级都能置顶（`pinned: true`），排序规则固定：
+
+| 位置 | 排序 |
+| --- | --- |
+| 侧栏项目 | 置顶在前 → 建得早的在前 |
+| 项目内分类 | **DDL预警 永远第一** → 置顶的 → 各自排的顺序 |
+| 分类里的工作 | 置顶 → 没完成的在前 → DDL 早的在前 → 建得早的在前 |
+
+置顶只影响显示顺序，不改进度、不改统计。
+
+右键（项目行 / 分类头 / 工作行上）是功能入口：
+
+- **项目**：置顶、新建分类、项目设置、打开文件夹、删除项目
+- **普通分类**：置顶、新建工作、重命名、删除；**DDL预警** 只给「折叠/展开」和「默认预警时间」
+- **工作**：置顶、标记完成/未完成、编辑、删除；DDL预警 里的克隆行，操作作用到原来那条工作
+
+项目标题下面那行 `DDL 工作 N 项` 就是当前撞线的条数，点一下直接跳到 DDL预警 分类。
+
+```
+PATCH /api/projects/{id}    { "pinned": true }
+PATCH /api/categories/{id}  { "pinned": true }
+PATCH /api/tasks/{id}       { "pinned": true }
+```
 
 ## 选文件夹
 

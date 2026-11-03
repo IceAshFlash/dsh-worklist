@@ -352,6 +352,7 @@ export function apply(ctx) {
         description: 'Per-task warning lead time in hours (default: inherit the project default, usually 24).',
       },
       note: { type: 'string', description: 'Free-form note on the task.' },
+      pinned: { type: 'boolean', description: 'Pin the task to the top of its category (true) or unpin it (false).' },
       done: { type: 'boolean', description: 'Mark the task (or the whole step list) done.' },
       steps: {
         type: 'array',
@@ -493,6 +494,7 @@ export function apply(ctx) {
             if (body.note !== undefined) task.note = String(body.note ?? '')
             if (body.dueAt !== undefined) task.dueAt = toTimestamp(body.dueAt)
             if (body.warnHours !== undefined) task.warnHours = taskWarnHours(body.warnHours)
+            if (body.pinned !== undefined) task.pinned = body.pinned === true
             task.updatedAt = Date.now()
             return task
           })
