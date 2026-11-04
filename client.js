@@ -801,7 +801,8 @@ window.__ModuleLoader__.load({
           h('button', { class: 'wl-icon', title: '关闭', onclick: closeModal }, '×')
         ),
         h('div', { class: 'wl-win-body' },
-          h('div', { class: 'wl-hint', text: config.message || '' })
+          // 二次确认里带路径和换行，pre-line 才不会被压成一行
+          h('div', { class: 'wl-hint', style: { whiteSpace: 'pre-line', wordBreak: 'break-all' }, text: config.message || '' })
         ),
         h('div', { class: 'wl-win-foot' },
           h('span', { class: 'wl-grow' }),
@@ -883,9 +884,7 @@ window.__ModuleLoader__.load({
       var askAgain = function () {
         openConfirm({
           title: '再确认一次：这会删掉磁盘上的文件',
-          message: '整个文件夹会被永久删除，不进回收站，也无法撤销：
-
-' + project.path,
+          message: '整个文件夹会被永久删除，不进回收站，也无法撤销：\n\n' + project.path,
           okLabel: '永久删除',
           onOk: function () { run(true) },
         })

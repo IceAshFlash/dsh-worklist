@@ -83,13 +83,14 @@ const bad = (message) => new ApiError(400, message)
 const missing = (message) => new ApiError(404, message)
 
 // 版本号进 /meta：换了 bundle 之后能一眼看出宿主加载的是哪一版。
-const PACKAGE_VERSION = (() => {
+// 每次请求都读一遍 package.json（一个几百字节的小文件），这样改了版本号不用重启宿主也能对上。
+const readPackageVersion = () => {
   try {
     return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
   } catch {
     return 'unknown'
   }
-})()
+}
 
 const text = (value) => (typeof value === 'string' ? value.trim() : '')
 
@@ -526,7 +527,7 @@ $owner.Close()
       status: 200,
       body: {
         ok: true,
-        version: PACKAGE_VERSION,
+        version: readPackageVersion(),
         aiAvailable: typeof aiSplit === 'function',
         dataFile: file,
       },

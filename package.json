@@ -1,6 +1,6 @@
 {
   "name": "dsh-worklist",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "description": "工作清单：项目 → 分类 → 工作单项的三级看板，带加权进度与 DSH 侧栏面板，同一份数据还能脱离 DSH 单独打开。",
   "license": "MIT",
@@ -26,18 +26,11 @@
   "files": [
     "index.js",
     "client.js",
-    "core/store.js",
-    "core/api.js",
-    "ui/app.js",
-    "ui/standalone.html",
-    "bin/worklist.js",
-    "bin/build.js",
-    "bin/worklist-open.vbs",
-    "bin/shortcut.js",
-    "bin/make-icon.js",
-    "bin/icon.ico",
+    "core/",
+    "ui/",
+    "bin/",
+    "locale/",
     "cordis.patch.yml",
-    "locale/*.json",
     "icon.svg",
     "README.md",
     "LICENSE"
@@ -64,5 +57,10 @@
         "@deepseek-ai/dsh-client-ui-slots"
       ]
     }
+  },
+  "scripts": {
+    "build": "node bin/build.js",
+    "check": "node bin/check.js",
+    "test": "node bin/check.js && node bin/build.js && node test/smoke.mjs"
   }
 }

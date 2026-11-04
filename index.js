@@ -591,3 +591,4 @@ export function apply(ctx) {
   stash.dispose = dispose
   return dispose
 }
+// 0.7.1：client.js 加载期语法检查（bin/build.js + bin/check.js）

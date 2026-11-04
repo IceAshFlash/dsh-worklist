@@ -12,6 +12,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -19,7 +20,32 @@ const ROOT = path.resolve(HERE, '..')
 const UI = path.join(ROOT, 'ui', 'app.js')
 const OUT = path.join(ROOT, 'client.js')
 
+/**
+ * 先把源码当成一段程序解析一遍。
+ *
+ * 为什么必须做：client.js 是**整块**交给 ModuleLoader 的，只要有一个字符不对
+ * （比如字符串里混进真实换行），整块都加载不了 —— 表现是启动校验
+ * "1 entry did not activate"，而且面板上一片空白、后端却一切正常。
+ * 这种错只有「冷启动重新拉 bundle」时才暴露，跑接口测试永远发现不了。
+ */
+const parse = (label, source) => {
+  try {
+    new vm.Script(source, { filename: label })
+    return null
+  } catch (error) {
+    return error
+  }
+}
+
 const ui = fs.readFileSync(UI, 'utf8')
+
+const uiProblem = parse(UI, ui)
+if (uiProblem !== null) {
+  process.stderr.write(`[build] ui/app.js 有语法错误，没有生成 client.js：
+${uiProblem.stack}
+`)
+  process.exit(1)
+}
 
 const HEADER = `/**
  * client.js — 由 bin/build.js 从 ui/app.js 生成，不要手改。
