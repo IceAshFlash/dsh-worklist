@@ -704,6 +704,7 @@ $owner.Close()
       const request = {
         title: text(body.title) || task?.title || '',
         note: text(body.note) || task?.note || '',
+        hint: text(body.hint).slice(0, 400),
         steps: Array.isArray(body.steps) ? body.steps : (task?.steps ?? []),
         categoryTitle: text(body.categoryTitle) || '',
         projectTitle: text(body.projectTitle) || '',

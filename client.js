@@ -144,7 +144,9 @@ window.__ModuleLoader__.load({
     '.wl-step-row .wl-num{width:64px;flex:0 0 64px}',
     '.wl-hint{font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
     '.wl-hint.is-error{color:var(--dsw-alias-state-error-primary,#e5484d)}',
-    '.wl-split-bar{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px dashed var(--dsw-alias-border-l2,#d3d8df);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fafbfc)}',
+    '.wl-split-bar{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:8px 10px;border:1px dashed var(--dsw-alias-border-l2,#d3d8df);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fafbfc)}',
+    '.wl-split-bar .wl-textarea{min-height:54px}',
+    '.wl-split-row{display:flex;align-items:center;gap:10px}',
     '.wl-spin{display:inline-block;width:11px;height:11px;border:2px solid var(--dsw-alias-border-l2,#c9ced6);border-top-color:var(--wl-accent);border-radius:50%;animation:wl-spin .7s linear infinite}',
     '@keyframes wl-spin{to{transform:rotate(360deg)}}',
     '.wl-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}',
@@ -1384,12 +1386,19 @@ window.__ModuleLoader__.load({
       }
       renderSteps()
 
+      var splitRequest = h('textarea', {
+        class: 'wl-textarea',
+        rows: 2,
+        placeholder: '可留空：比如「按上线顺序拆」「每步半天以内」「先把测试写完再动手」',
+      })
+
       var splitButton = h('button', {
         class: 'wl-btn',
         onclick: function () {
           var payload = {
             title: titleInput.value.trim(),
             note: noteInput.value.trim(),
+            hint: splitRequest.value.trim(),
             categoryTitle: categorySelect.selectedOptions[0] !== undefined ? categorySelect.selectedOptions[0].textContent : '',
             projectTitle: '',
             steps: steps.filter(function (s) { return s.title.trim() !== '' }).map(function (s) { return { title: s.title, weight: s.weight } }),
@@ -1520,8 +1529,14 @@ window.__ModuleLoader__.load({
             stepsBox
           ),
           h('div', { class: 'wl-split-bar' },
-            splitButton,
-            splitHint
+            h('div', { class: 'wl-field', style: { gap: '4px' } },
+              h('span', { class: 'wl-label', text: '拆分要求（可选）' }),
+              splitRequest
+            ),
+            h('div', { class: 'wl-split-row' },
+              splitButton,
+              splitHint
+            )
           )
         ),
         h('div', { class: 'wl-win-foot' },

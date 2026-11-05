@@ -101,6 +101,7 @@ const buildPrompt = (request) => {
     `工作名称：${request.title}`,
     where.length > 0 ? `所属：${where.join(' / ')}` : '',
     request.note !== '' ? `备注：${request.note}` : '',
+    typeof request.hint === 'string' && request.hint !== '' ? `用户对拆分方式的要求（优先满足）：${request.hint}` : '',
     existing.length > 0 ? `已有的步骤（可以沿用、合并或细化）：${existing.map((step) => step.title).join('；')}` : '',
     '',
     '要求：',

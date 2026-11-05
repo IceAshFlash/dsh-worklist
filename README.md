@@ -242,6 +242,18 @@ curl -X DELETE "http://127.0.0.1:7419/api/projects/<id>?files=1"
 
 `purged` 是真正删掉的路径，`skipped` 是被安全闸拦下的原因，`purgeError` 是删的时候系统报的错（比如文件被占用）。
 
+## AI 拆分
+
+「新建 / 编辑工作」窗口底部，`✦ 让 DSH 拆分` 上方有一个**拆分要求**输入框，留空也行。填了的内容会原样变成提示词里的一句：
+
+```
+用户对拆分方式的要求（优先满足）：按上线顺序拆，每步半天以内
+```
+
+限制 400 字（`core/api.js` 里 `hint` 用 `text().slice(0, 400)`）。它只影响这一次请求，不写进数据、也不影响手动写的步骤。输入框旁边那句提示会告诉你拆了几步。
+
+不点按钮就不发任何模型请求——这是这个插件唯一的模型入口。
+
 ## 接口
 
 `core/api.js` 里的路由表，前缀由宿主给：
@@ -264,7 +276,7 @@ POST   /tasks                 { categoryId, title, weight?, dueAt?, steps? }
 PATCH  /tasks/:id             done=true 时会级联勾选所有步骤
 DELETE /tasks/:id
 PUT    /tasks/:id/steps       { steps: [{ title, weight }] }
-POST   /ai-split              { title, note?, projectTitle?, categoryTitle?, steps? }
+POST   /ai-split              { title, note?, hint?, projectTitle?, categoryTitle?, steps? }
 ```
 
 `/ai-split` 只在 DSH 里有实现（独立模式回 501）。它走 `subagents.startActivation`
