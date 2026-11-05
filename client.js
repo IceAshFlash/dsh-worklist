@@ -41,9 +41,15 @@ window.__ModuleLoader__.load({
     '.wl-side-head{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 8px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#5b6470)}',
     '.wl-side-list{flex:1 1 auto;overflow-y:auto;padding:0 8px 12px}',
     '.wl-check-row{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer}',
-    '.wl-arch-btn{margin-left:auto;margin-right:2px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));background:transparent;color:var(--dsw-alias-label-secondary,#5b6470);border-radius:6px;padding:1px 6px;font-size:11px;line-height:16px;cursor:pointer;font-family:inherit}',
-    '.wl-arch-btn:hover{background:var(--dsw-alias-bg-layer-2,#f0f2f5)}',
-    '.wl-arch-btn.is-on{color:var(--wl-accent);border-color:var(--wl-accent)}',
+    // 视图选项：尺寸/圆角/颜色对齐 DSH 自带的 iconButton（28×28，radius-sm，label-secondary，hover 用 interactive-bg-hover）
+    '.wl-iconbtn{margin-left:auto;margin-right:2px;width:28px;height:28px;flex:none;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;border-radius:var(--dsw-radius-sm,6px);color:var(--dsw-alias-label-secondary,#5b6470);cursor:pointer}',
+    '.wl-iconbtn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}',
+    '.wl-iconbtn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,var(--wl-accent));outline-offset:-2px}',
+    '.wl-menu-label{padding:6px 10px 2px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
+    '.wl-menu-icon{width:16px;height:16px;flex:0 0 16px;display:inline-flex;align-items:center;justify-content:center;opacity:.9}',
+    '.wl-menu-text{flex:1 1 auto;text-align:left}',
+    '.wl-menu-check{margin-left:auto;flex:none;font-size:12px;color:var(--wl-accent)}',
+    '.wl-menu-item.is-checked{color:var(--dsw-alias-label-primary,#1c1f24);font-weight:600}',
     '.wl-chip.is-arch{background:rgba(120,130,145,.14);color:var(--dsw-alias-label-secondary,#5b6470)}',
     '.wl-task.is-archived,.wl-cat.is-archived,.wl-proj.is-archived{opacity:.55}',
     '.wl-proj{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:8px;padding:8px 10px;margin:2px 0;cursor:pointer;color:inherit;font:inherit}',
@@ -60,8 +66,8 @@ window.__ModuleLoader__.load({
     '.wl-top-sub{display:flex;align-items:center;gap:8px;padding:0 18px 10px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
     '.wl-top-subbtn{border:0;background:transparent;padding:0;font:inherit;font-size:11px;color:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;border-radius:6px}',
     '.wl-top-subbtn:hover{color:var(--dsw-alias-label-secondary,#5b6470)}',
-    '.wl-menu{position:fixed;z-index:1000;min-width:158px;padding:4px;border-radius:9px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);box-shadow:0 10px 28px rgba(15,23,42,.18)}',
-    '.wl-menu-item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:6px;font:inherit;font-size:12px;color:inherit;cursor:pointer;white-space:nowrap}',
+    '.wl-menu{position:fixed;z-index:1000;min-width:176px;padding:4px;border-radius:9px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);box-shadow:0 10px 28px rgba(15,23,42,.18)}',
+    '.wl-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:6px;font:inherit;font-size:12px;color:inherit;cursor:pointer;white-space:nowrap}',
     '.wl-menu-item:hover{background:var(--dsw-alias-bg-layer-2,#eef1f5)}',
     '.wl-menu-item.is-danger{color:var(--wl-danger,#e5484d)}',
     '.wl-menu-item[disabled]{opacity:.4;cursor:default}',
@@ -266,7 +272,6 @@ window.__ModuleLoader__.load({
      */
     var ARCHIVE_KEY = 'wl-archive-mode'
     var ARCHIVE_MODES = ['hide', 'all', 'only']
-    var ARCHIVE_TEXT = { hide: '归档 关', all: '归档 含', only: '归档 只' }
     try {
       var savedMode = localStorage.getItem(ARCHIVE_KEY)
       if (ARCHIVE_MODES.indexOf(savedMode) >= 0) view.archiveMode = savedMode
@@ -279,10 +284,10 @@ window.__ModuleLoader__.load({
       return true
     }
 
-    var cycleArchiveMode = function () {
-      var next = ARCHIVE_MODES[(ARCHIVE_MODES.indexOf(view.archiveMode) + 1) % ARCHIVE_MODES.length]
-      view.archiveMode = next
-      try { localStorage.setItem(ARCHIVE_KEY, next) } catch (error) { /* 忽略 */ }
+    var setArchiveMode = function (mode) {
+      if (ARCHIVE_MODES.indexOf(mode) < 0) return
+      view.archiveMode = mode
+      try { localStorage.setItem(ARCHIVE_KEY, mode) } catch (error) { /* 忽略 */ }
       render()
     }
 
@@ -392,11 +397,13 @@ window.__ModuleLoader__.load({
       side.appendChild(h('div', { class: 'wl-side-head' },
         h('span', { text: '项目' }),
         h('button', {
-          class: 'wl-arch-btn' + (view.archiveMode === 'hide' ? '' : ' is-on'),
-          title: '切换查看方式：不显示归档 → 含归档 → 只看归档',
-          onclick: cycleArchiveMode,
-          text: ARCHIVE_TEXT[view.archiveMode],
-        }),
+          class: 'wl-iconbtn',
+          type: 'button',
+          title: '视图选项',
+          'aria-label': '视图选项',
+          'aria-haspopup': 'menu',
+          onclick: function () { openViewMenu(this) },
+        }, iconSliders()),
         h('button', {
           class: 'wl-btn is-ghost',
           title: '新建项目',
@@ -748,6 +755,54 @@ window.__ModuleLoader__.load({
       if (event.key === 'Escape') closeMenu()
     }
 
+    /* ---------------- 图标（照 DSH 自带的 16×16 线性图标画） ---------------- */
+
+    var svgIcon = function (children) {
+      return h('svg', {
+        width: 16,
+        height: 16,
+        viewBox: '0 0 16 16',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        'aria-hidden': 'true',
+      }, children.filter(function (child) { return child !== null }))
+    }
+
+    // IconSlidersTwoOutlineRegular —— DSH「视图选项」用的就是它（两条滑杆 + 两个旋钮）
+    var iconSliders = function () {
+      return svgIcon([
+        h('path', { key: 'a', d: 'M2.3 5h5.85M12.05 5h1.65' }),
+        h('circle', { key: 'b', cx: 9.95, cy: 5, r: 1.45 }),
+        h('path', { key: 'c', d: 'M2.3 11h1.65M7.85 11h5.85' }),
+        h('circle', { key: 'd', cx: 5.75, cy: 11, r: 1.45 }),
+      ])
+    }
+
+    // IconArchive(Check|Off)OutlineRegular 的同一副骨架，靠多出来的那条线区分
+    var iconArchive = function (checked, off) {
+      return svgIcon([
+        h('rect', { key: 'r', x: 1.9, y: 2.1, width: 12.2, height: 3.4, rx: 1.1 }),
+        h('path', { key: 'b', d: 'M2.95 5.7v4.8a2.9 2.9 0 0 0 2.9 2.9h4.3a2.9 2.9 0 0 0 2.9-2.9V5.7' }),
+        checked === true ? h('path', { key: 'c', d: 'm6 9.35 1.4 1.4 2.6-2.6' }) : null,
+        off === true ? h('path', { key: 'o', d: 'm2.2 1.3 11.6 12.8' }) : null,
+      ])
+    }
+
+    var menuIcon = function (kind) {
+      if (kind === 'archive-off') return iconArchive(false, true)
+      if (kind === 'archive-check') return iconArchive(true, false)
+      return iconArchive(false, false)
+    }
+
+    /*
+     * 打开菜单。
+     *
+     * event 可以是鼠标事件（右键菜单，贴着光标弹），
+     * 也可以是一个按钮元素（视图选项这种，贴着按钮下沿、右对齐）。
+     */
     var openMenu = function (event, items) {
       closeMenu()
       var box = h('div', { class: 'wl-menu' })
@@ -756,24 +811,47 @@ window.__ModuleLoader__.load({
           box.appendChild(h('div', { class: 'wl-menu-sep' }))
           return
         }
+        if (item.type === 'label') {
+          box.appendChild(h('div', { class: 'wl-menu-label', text: item.text }))
+          return
+        }
         box.appendChild(h('button', {
-          class: 'wl-menu-item' + (item.danger ? ' is-danger' : ''),
+          class: 'wl-menu-item' + (item.danger ? ' is-danger' : '') + (item.checked === true ? ' is-checked' : ''),
           disabled: item.disabled === true ? true : undefined,
+          role: 'menuitem',
+          'aria-checked': item.checked === true ? 'true' : undefined,
           onclick: function (ev) {
             ev.stopPropagation()
             closeMenu()
             if (item.disabled === true) return
-            item.run()
+            item.run(item)
           },
-        }, item.label))
+        },
+          item.icon ? h('span', { class: 'wl-menu-icon' }, menuIcon(item.icon)) : null,
+          h('span', { class: 'wl-menu-text', text: item.label }),
+          item.checked === true ? h('span', { class: 'wl-menu-check', text: '✓' }) : null
+        ))
       })
       // 先挂上去量一下尺寸，再摆位置，免得贴边溢出。
       box.style.left = '-9999px'
       box.style.top = '0px'
       doc.body.appendChild(box)
       var rect = box.getBoundingClientRect()
-      var x = Math.max(4, Math.min(event.clientX, window.innerWidth - rect.width - 8))
-      var y = Math.max(4, Math.min(event.clientY, window.innerHeight - rect.height - 8))
+      var anchor = event !== null && typeof event === 'object' && event.nodeType === 1 ? event : null
+      var x
+      var y
+      if (anchor !== null) {
+        var ar = anchor.getBoundingClientRect()
+        // 右对齐按钮（DSH 的视图选项菜单也是 align=end），空间不够再往左推
+        x = ar.right - rect.width
+        y = ar.bottom + 4
+        if (y + rect.height > window.innerHeight - 8) y = Math.max(8, ar.top - rect.height - 4)
+      } else {
+        x = event.clientX
+        y = event.clientY
+      }
+      x = Math.max(4, Math.min(x, window.innerWidth - rect.width - 8))
+      y = Math.max(4, Math.min(y, window.innerHeight - rect.height - 8))
       box.style.left = x + 'px'
       box.style.top = y + 'px'
       menu = box
@@ -783,6 +861,34 @@ window.__ModuleLoader__.load({
         doc.addEventListener('contextmenu', closeMenu, true)
         doc.addEventListener('keydown', menuKey, true)
       }, 0)
+    }
+
+    /*
+     * 视图选项菜单：和 DSH 侧栏那枚滑杆按钮同一套交互 ——
+     * 一枚图标按钮，点开是一列带图标、选中项打勾的筛选项。
+     */
+    var openViewMenu = function (anchor) {
+      openMenu(anchor, [
+        { type: 'label', text: '归档' },
+        {
+          label: '只看未归档',
+          icon: 'archive-off',
+          checked: view.archiveMode === 'hide',
+          run: function () { setArchiveMode('hide') },
+        },
+        {
+          label: '归档一起显示',
+          icon: 'archive',
+          checked: view.archiveMode === 'all',
+          run: function () { setArchiveMode('all') },
+        },
+        {
+          label: '只看归档',
+          icon: 'archive-check',
+          checked: view.archiveMode === 'only',
+          run: function () { setArchiveMode('only') },
+        },
+      ])
     }
 
     var openConfirm = function (options) {
