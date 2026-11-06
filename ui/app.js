@@ -396,7 +396,7 @@
           'aria-label': '视图选项',
           'aria-haspopup': 'menu',
           onclick: function () { openViewMenu(this) },
-        }, iconSliders()),
+        }, iconSliders(18)),
         h('button', {
           class: 'wl-btn is-ghost',
           title: '新建项目',
@@ -797,28 +797,30 @@
 
     /* ---------------- 图标（照 DSH 自带的 16×16 线性图标画） ---------------- */
 
-    var svgIcon = function (children) {
+    var svgIcon = function (children, size) {
+      var side = size === undefined ? 16 : size
       return h('svg', {
-        width: 16,
-        height: 16,
+        width: side,
+        height: side,
         viewBox: '0 0 16 16',
         fill: 'none',
         stroke: 'currentColor',
-        strokeWidth: 1.4,
-        strokeLinecap: 'round',
-        strokeLinejoin: 'round',
+        // SVG 的呈现属性是连字符名，写成 strokeWidth 会被当成无效属性丢掉（线就退化成 1px）
+        'stroke-width': 1.6,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
         'aria-hidden': 'true',
       }, children.filter(function (child) { return child !== null }))
     }
 
     // IconSlidersTwoOutlineRegular —— DSH「视图选项」用的就是它（两条滑杆 + 两个旋钮）
-    var iconSliders = function () {
+    var iconSliders = function (size) {
       return svgIcon([
         h('path', { key: 'a', d: 'M2.3 5h5.85M12.05 5h1.65' }),
         h('circle', { key: 'b', cx: 9.95, cy: 5, r: 1.45 }),
         h('path', { key: 'c', d: 'M2.3 11h1.65M7.85 11h5.85' }),
         h('circle', { key: 'd', cx: 5.75, cy: 11, r: 1.45 }),
-      ])
+      ], size)
     }
 
     // IconArchive(Check|Off)OutlineRegular 的同一副骨架，靠多出来的那条线区分
