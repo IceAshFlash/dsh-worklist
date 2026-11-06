@@ -762,7 +762,7 @@ window.__ModuleLoader__.load({
         task.pinned ? h('span', { class: 'wl-pin', title: '已置顶', text: '📌' }) : null,
         task.warnOwn ? h('span', { class: 'wl-chip is-warn', text: '预警 ' + hoursLabel(task.warnHours) }) : null,
         task.steps.length > 0 ? h('span', { class: 'wl-chip', text: task.steps.filter(function (s) { return s.done }).length + '/' + task.steps.length }) : null,
-        h('span', { class: 'wl-chip', text: 'w' + task.weight }),
+        h('span', { class: 'wl-chip', title: '权重 ' + task.weight + '：数值越大，它在这一级进度里占比越高', text: '权重 ' + task.weight }),
         dueChip(task),
         bar(task.progress, '56px'),
         isClone ? null : h('button', {
@@ -796,7 +796,7 @@ window.__ModuleLoader__.load({
               },
             }, step.done ? '✓' : ''),
             h('span', { class: 'wl-step-name', text: step.title }),
-            h('span', { class: 'wl-chip', text: 'w' + step.weight })
+            h('span', { class: 'wl-chip', title: '权重 ' + step.weight, text: '权重 ' + step.weight })
           ))
         })
         wrap.appendChild(steps)
