@@ -540,7 +540,16 @@ $owner.Close()
       const project = state.projects.find((item) => item.id === params[0])
       if (project === undefined) throw missing('项目不存在')
       if (text(project.path) === '') throw bad('这个项目还没填文件夹路径')
-      const opened = await openFolder(project.path)
+      // 先确认目录真在：直接交给 explorer 打一个不存在的路径，Windows 会弹一个找不到文件的对话框
+      const target = path.resolve(text(project.path))
+      let isDir = false
+      try {
+        isDir = fs.statSync(target).isDirectory()
+      } catch {
+        isDir = false
+      }
+      if (!isDir) throw bad(`目录不存在：${target}`)
+      const opened = await openFolder(target)
       return { status: 200, body: { ok: true, opened } }
     }],
     ['PATCH', /^\/projects\/([^/]+)$/, async ({ body, params }) => ({

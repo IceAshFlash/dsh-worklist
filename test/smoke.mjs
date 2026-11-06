@@ -232,8 +232,15 @@ try {
   const bad = await call('POST', '/projects', { title: '' })
   check('空名字被拒', bad.status === 400, `status=${bad.status}`)
 
-  const openBad = await call('POST', `/projects/${projectId}/open`)
-  check('打开不存在的目录有反馈', openBad.status === 400 || openBad.status === 200, `status=${openBad.status}`)
+  // 冒烟不能真去开资源管理器：开一个存在的目录会弹窗口，开一个不存在的会弹系统错误框。
+  // 所以这里只验「目录不存在会被拦住」，绝不触发 openFolder。
+  const gonePath = path.join(ROOT, `.smoke-gone-${process.pid}`)
+  const goneProj = await call('POST', '/projects', { title: '目录已删项目', path: gonePath })
+  const goneId = goneProj.payload.project?.id
+  fs.rmSync(gonePath, { recursive: true, force: true })
+  const openBad = await call('POST', `/projects/${goneId}/open`)
+  check('打开不存在的目录被拦住', openBad.status === 400, `status=${openBad.status}`)
+  await call('DELETE', `/projects/${goneId}`)
 
   // 归档：默认不算进度、不算任务数，但数据还在
   const arcTask = await call('POST', '/tasks', { categoryId, title: '这条要归档', weight: 1 })
