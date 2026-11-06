@@ -41,11 +41,15 @@ window.__ModuleLoader__.load({
     '.wl-side-head{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 8px;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#5b6470)}',
     '.wl-side-list{flex:1 1 auto;overflow-y:auto;padding:0 8px 12px}',
     '.wl-check-row{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer}',
-    // 视图选项：尺寸/圆角/颜色对齐 DSH 自带的 iconButton（28×28，radius-sm，label-secondary，hover 用 interactive-bg-hover）
-    '.wl-iconbtn{margin-left:auto;margin-right:2px;width:28px;height:28px;flex:none;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;border-radius:var(--dsw-radius-sm,6px);color:var(--dsw-alias-label-primary,#1c1f24);cursor:pointer}',
-    '.wl-iconbtn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));color:var(--dsw-alias-label-primary,#1c1f24)}',
-    '.wl-iconbtn:active{background:var(--dsw-alias-interactive-bg-pressed,rgba(0,0,0,.09))}',
-    '.wl-iconbtn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,var(--wl-accent));outline-offset:-2px}',
+    // 视图选项：带文字的药丸按钮。DSH 自带的是一枚纯图标按钮，但纯描边图标在
+// 深浅两套主题下都容易糊成一条灰线，所以这里保留图标、补上「视图」两字和下拉箭头。
+    '.wl-viewbtn{margin-left:auto;margin-right:6px;height:26px;flex:none;display:inline-flex;align-items:center;gap:5px;padding:0 9px;border:1px solid var(--dsw-alias-border-l2,#d3d8df);background:var(--dsw-alias-bg-layer-2,#eef1f5);border-radius:13px;font:inherit;font-size:12px;font-weight:600;line-height:1;color:var(--dsw-alias-label-primary,#1c1f24);cursor:pointer}',
+    '.wl-viewbtn:hover{background:var(--dsw-alias-bg-layer-1,#f6f8fa);border-color:var(--dsw-alias-border-l1,#e2e6eb)}',
+    '.wl-viewbtn:active{background:var(--dsw-alias-bg-layer-2,#eef1f5)}',
+    '.wl-viewbtn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,var(--wl-accent));outline-offset:1px}',
+    '.wl-viewbtn-text{letter-spacing:.2px}',
+    '.wl-caret{font-size:9px;line-height:1;opacity:.7}',
+    '.wl-ver{padding:0 12px 10px;font-size:10px;line-height:1;color:var(--dsw-alias-label-tertiary,#8b929c);user-select:text}',
     '.wl-menu-label{padding:6px 10px 2px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
     '.wl-menu-icon{width:16px;height:16px;flex:0 0 16px;display:inline-flex;align-items:center;justify-content:center;opacity:.9}',
     '.wl-menu-text{flex:1 1 auto;text-align:left}',
@@ -274,6 +278,7 @@ window.__ModuleLoader__.load({
       aiAvailable: false,
       dataFile: '',
       archiveMode: 'hide',
+      version: '',
     }
     var mounted = true
     var mask = null
@@ -378,6 +383,8 @@ window.__ModuleLoader__.load({
         if (!mounted) return
         view.aiAvailable = payload.aiAvailable === true
         view.dataFile = typeof payload.dataFile === 'string' ? payload.dataFile : ''
+        var next = typeof payload.version === 'string' ? payload.version : ''
+        if (next !== view.version) { view.version = next; render() }
       }).catch(function () {})
     }
 
@@ -410,13 +417,13 @@ window.__ModuleLoader__.load({
       side.appendChild(h('div', { class: 'wl-side-head' },
         h('span', { text: '项目' }),
         h('button', {
-          class: 'wl-iconbtn',
+          class: 'wl-viewbtn',
           type: 'button',
-          title: '视图选项',
+          title: '视图选项：归档显示方式',
           'aria-label': '视图选项',
           'aria-haspopup': 'menu',
           onclick: function () { openViewMenu(this) },
-        }, iconSliders(18)),
+        }, iconSliders(16), h('span', { class: 'wl-viewbtn-text', text: '视图' }), h('span', { class: 'wl-caret', text: '▾' })),
         h('button', {
           class: 'wl-btn is-ghost',
           title: '新建项目',
@@ -458,6 +465,8 @@ window.__ModuleLoader__.load({
         list.appendChild(button)
       })
       side.appendChild(list)
+      // 版本标记：用来一眼确认面板跑的是不是刚装上的那一版（排查缓存时特别有用）
+      side.appendChild(h('div', { class: 'wl-ver', text: view.version ? 'v' + view.version : '' }))
       return side
     }
 
