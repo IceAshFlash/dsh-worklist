@@ -705,6 +705,14 @@ $owner.Close()
         title: text(body.title) || task?.title || '',
         note: text(body.note) || task?.note || '',
         hint: text(body.hint).slice(0, 400),
+        images: (Array.isArray(body.images) ? body.images : [])
+          .filter((item) => item !== null && typeof item === 'object' && typeof item.data === 'string' && item.data !== '')
+          .slice(0, 4)
+          .map((item) => ({
+            name: text(item.name).slice(0, 80) || 'screenshot.png',
+            mediaType: text(item.mediaType) || 'image/png',
+            data: item.data,
+          })),
         steps: Array.isArray(body.steps) ? body.steps : (task?.steps ?? []),
         categoryTitle: text(body.categoryTitle) || '',
         projectTitle: text(body.projectTitle) || '',

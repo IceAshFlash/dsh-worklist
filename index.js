@@ -103,6 +103,9 @@ const buildPrompt = (request) => {
     request.note !== '' ? `备注：${request.note}` : '',
     typeof request.hint === 'string' && request.hint !== '' ? `用户对拆分方式的要求（优先满足）：${request.hint}` : '',
     existing.length > 0 ? `已有的步骤（可以沿用、合并或细化）：${existing.map((step) => step.title).join('；')}` : '',
+    Array.isArray(request.images) && request.images.length > 0
+      ? `随消息附了 ${request.images.length} 张截图：先看懂图里在做什么，再决定怎么拆。`
+      : '',
     '',
     '要求：',
     '- 4 到 8 步，按执行顺序排列，每步是一个能独立完成、可验证的动作。',
@@ -169,6 +172,37 @@ const pickParent = (agents) => {
   return all.length > 0 ? all[0] : null
 }
 
+const IMAGE_MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+
+/** 把面板里贴的截图存进附件库，换成子代理能读的 image 块。 */
+const attachImages = async (ctx, request) => {
+  const list = Array.isArray(request.images) ? request.images : []
+  if (list.length === 0) return { parts: [], error: null }
+  const attachments = ctx.get('attachments')
+  if (attachments === undefined) {
+    return { parts: [], error: '这个 DSH 没有附件服务，图片加不进去：把图片去掉再拆一次。' }
+  }
+  const limits = attachments.imageLimits ?? {}
+  const maxCount = Number(limits.maxImagesPerMessage) > 0 ? Number(limits.maxImagesPerMessage) : 4
+  const maxBytes = Number(limits.maxImageBytes) > 0 ? Number(limits.maxImageBytes) : 8 * 1024 * 1024
+  const parts = []
+  for (const item of list.slice(0, Math.min(4, maxCount))) {
+    const mediaType = IMAGE_MEDIA_TYPES.has(item.mediaType) ? item.mediaType : 'image/png'
+    const data = Buffer.from(String(item.data ?? ''), 'base64')
+    if (data.length === 0) continue
+    if (data.length > maxBytes) {
+      return { parts: [], error: `有张图太大（${Math.round(data.length / 1024)} KB，上限 ${Math.round(maxBytes / 1024)} KB），压小一点再试。` }
+    }
+    try {
+      const ref = await attachments.saveImage({ data, mediaType, name: item.name })
+      parts.push({ type: 'image', attachment: ref })
+    } catch (error) {
+      return { parts: [], error: `图片没能存进附件库：${String(error?.message ?? error)}` }
+    }
+  }
+  return { parts, error: null }
+}
+
 const makeAiSplit = (ctx) => async (request) => {
   const subagents = ctx.get('subagents')
   const agents = ctx.get('agents')
@@ -190,6 +224,12 @@ const makeAiSplit = (ctx) => async (request) => {
   try {
     const workingDirectory = ctx.get('workingDirectory')
     const cwd = typeof workingDirectory?.defaultDirectory === 'string' ? workingDirectory.defaultDirectory : undefined
+    const prompt = [{ type: 'text', text: buildPrompt(request) }]
+    const attached = await attachImages(ctx, request)
+    prompt.push(...attached.parts)
+    if (attached.error !== null) {
+      return { ok: false, error: attached.error }
+    }
     const activation = await subagents.startActivation({
       provider,
       label: 'worklist 拆步骤', // ui-copy-ignore
@@ -199,7 +239,7 @@ const makeAiSplit = (ctx) => async (request) => {
         parent,
         signal: controller.signal,
         cwd,
-        prompt: [{ type: 'text', text: buildPrompt(request) }],
+        prompt,
         outputSchema: AI_OUTPUT_SCHEMA,
       },
     })
@@ -222,6 +262,12 @@ const makeAiSplit = (ctx) => async (request) => {
   } catch (error) {
     const message = String(error?.message ?? error)
     if (/abort/i.test(message)) return { ok: false, error: `AI 拆分超时（${Math.round(AI_TIMEOUT_MS / 1000)} 秒）。` }
+    if (/does not support image input|not support image/i.test(message)) {
+      return {
+        ok: false,
+        error: '当前这个模型不支持读图：把图片去掉再拆，或在 DSH 里换一个支持视觉的模型。',
+      }
+    }
     return { ok: false, error: `AI 拆分失败：${message}` }
   } finally {
     clearTimeout(timer)
@@ -542,7 +588,7 @@ export function apply(ctx) {
         let bytes = 0
         for await (const chunk of req) {
           bytes += chunk.length
-          if (bytes > 1024 * 512) {
+          if (bytes > 1024 * 1024 * 12) {
             res.writeHead(413, { 'content-type': 'application/json; charset=utf-8' })
             res.end(JSON.stringify({ ok: false, error: '请求体太大' }))
             return

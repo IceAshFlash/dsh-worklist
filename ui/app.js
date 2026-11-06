@@ -22,8 +22,9 @@
     '.wl-side-list{flex:1 1 auto;overflow-y:auto;padding:0 8px 12px}',
     '.wl-check-row{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer}',
     // 视图选项：尺寸/圆角/颜色对齐 DSH 自带的 iconButton（28×28，radius-sm，label-secondary，hover 用 interactive-bg-hover）
-    '.wl-iconbtn{margin-left:auto;margin-right:2px;width:28px;height:28px;flex:none;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;border-radius:var(--dsw-radius-sm,6px);color:var(--dsw-alias-label-secondary,#5b6470);cursor:pointer}',
-    '.wl-iconbtn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}',
+    '.wl-iconbtn{margin-left:auto;margin-right:2px;width:28px;height:28px;flex:none;display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;border-radius:var(--dsw-radius-sm,6px);color:var(--dsw-alias-label-primary,#1c1f24);cursor:pointer}',
+    '.wl-iconbtn:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));color:var(--dsw-alias-label-primary,#1c1f24)}',
+    '.wl-iconbtn:active{background:var(--dsw-alias-interactive-bg-pressed,rgba(0,0,0,.09))}',
     '.wl-iconbtn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,var(--wl-accent));outline-offset:-2px}',
     '.wl-menu-label{padding:6px 10px 2px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
     '.wl-menu-icon{width:16px;height:16px;flex:0 0 16px;display:inline-flex;align-items:center;justify-content:center;opacity:.9}',
@@ -46,11 +47,21 @@
     '.wl-top-sub{display:flex;align-items:center;gap:8px;padding:0 18px 10px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
     '.wl-top-subbtn{border:0;background:transparent;padding:0;font:inherit;font-size:11px;color:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;border-radius:6px}',
     '.wl-top-subbtn:hover{color:var(--dsw-alias-label-secondary,#5b6470)}',
-    '.wl-menu{position:fixed;z-index:1000;min-width:176px;padding:4px;border-radius:9px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);box-shadow:0 10px 28px rgba(15,23,42,.18)}',
-    '.wl-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:6px;font:inherit;font-size:12px;color:inherit;cursor:pointer;white-space:nowrap}',
+    '.wl-side-head .wl-btn.is-ghost{color:var(--dsw-alias-label-primary,#1c1f24)}',
+    '.wl-side-head .wl-btn.is-ghost:hover{color:var(--dsw-alias-label-primary,#1c1f24);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}',
+    '.wl-menu{position:fixed;z-index:1000;min-width:176px;padding:4px;border-radius:9px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);box-shadow:0 10px 28px rgba(15,23,42,.18);color:var(--dsw-alias-label-primary,#1c1f24)}',
+    '.wl-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:6px;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary,#1c1f24);cursor:pointer;white-space:nowrap}',
     '.wl-menu-item:hover{background:var(--dsw-alias-bg-layer-2,#eef1f5)}',
     '.wl-menu-item.is-danger{color:var(--wl-danger,#e5484d)}',
-    '.wl-menu-item[disabled]{opacity:.4;cursor:default}',
+    '.wl-menu-item[disabled]{color:var(--dsw-alias-label-tertiary,#8b929c);opacity:.55;cursor:default}',
+    '.wl-dur{display:flex;align-items:center;gap:6px}',
+    '.wl-durnum{width:64px;flex:0 0 64px;text-align:right}',
+    '.wl-unit{font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
+    '.wl-imgs{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}',
+    '.wl-img{position:relative;width:72px;height:54px;border-radius:6px;overflow:hidden;border:1px solid var(--dsw-alias-border-l2,#d3d8df);background:var(--dsw-alias-bg-layer-2,#eef1f5)}',
+    '.wl-img img{width:100%;height:100%;object-fit:cover;display:block}',
+    '.wl-img-del{position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;border:0;border-radius:50%;background:rgba(15,23,42,.62);color:#fff;font-size:11px;cursor:pointer;padding:0}',
+    '.wl-img-add{width:72px;height:54px;border-radius:6px;border:1px dashed var(--dsw-alias-border-l2,#c9ced6);background:transparent;color:var(--dsw-alias-label-secondary,#5b6470);font-size:11px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}',
     '.wl-menu-sep{height:1px;margin:4px 6px;background:var(--dsw-alias-border-l1,#e6e9ee)}',
     '.wl-pin{flex:0 0 auto;font-size:10px;line-height:1;color:var(--wl-accent);opacity:.95}',
     '.wl-proj.is-pinned{box-shadow:inset 2px 0 0 var(--wl-accent)}',
@@ -537,6 +548,53 @@
       return value + '小时'
     }
 
+    /** 预警时长：两个输入框，天 + h，合计 = 天*24 + h（1 天 = 24 小时，上限 30 天 / 720 小时）。 */
+    var makeHoursField = function (initialHours) {
+      var seed = Math.round(Number(initialHours))
+      if (!isFinite(seed) || seed <= 0) seed = 24
+      seed = Math.min(seed, 720)
+      var daysInput = h('input', {
+        class: 'wl-input wl-durnum',
+        type: 'number',
+        min: '0',
+        max: '30',
+        step: '1',
+        value: String(Math.floor(seed / 24)),
+      })
+      var hoursInput = h('input', {
+        class: 'wl-input wl-durnum',
+        type: 'number',
+        min: '0',
+        max: '23',
+        step: '1',
+        value: String(seed % 24),
+      })
+      var el = h('div', { class: 'wl-dur' },
+        daysInput,
+        h('span', { class: 'wl-unit', text: '天' }),
+        hoursInput,
+        h('span', { class: 'wl-unit', text: 'h' })
+      )
+      var get = function () {
+        var days = Math.floor(Number(daysInput.value))
+        var rest = Math.floor(Number(hoursInput.value))
+        if (!isFinite(days) || days < 0) days = 0
+        if (!isFinite(rest) || rest < 0) rest = 0
+        if (days > 30) days = 30
+        if (rest > 23) rest = 23
+        var total = days * 24 + rest
+        return total > 0 ? Math.min(total, 720) : null
+      }
+      var set = function (hours) {
+        var value = Math.round(Number(hours))
+        if (!isFinite(value) || value <= 0) value = 0
+        value = Math.min(value, 720)
+        daysInput.value = String(Math.floor(value / 24))
+        hoursInput.value = String(value % 24)
+      }
+      return { el: el, get: get, set: set, inputs: [daysInput, hoursInput] }
+    }
+
     /** 克隆行显示"来自哪个分类"，方便一眼知道它原本在哪儿。 */
     var originTitle = function (task) {
       if (!task.cloneOf || view.data === null) return ''
@@ -746,7 +804,7 @@
         viewBox: '0 0 16 16',
         fill: 'none',
         stroke: 'currentColor',
-        strokeWidth: 1,
+        strokeWidth: 1.4,
         strokeLinecap: 'round',
         strokeLinejoin: 'round',
         'aria-hidden': 'true',
@@ -1277,15 +1335,7 @@
       }
       var categorySelect = h('select', { class: 'wl-select' })
       var warnMode = isEdit && task.warnOwn ? 'custom' : 'inherit'
-      var warnInput = h('input', {
-        class: 'wl-input',
-        type: 'number',
-        min: '1',
-        max: '720',
-        step: '1',
-        style: { maxWidth: '96px' },
-        value: String(isEdit && task.warnOwn ? task.warnHours : projectDefaultHours(categoryId)),
-      })
+      var warnInput = makeHoursField(isEdit && task.warnOwn ? task.warnHours : projectDefaultHours(categoryId))
       var inheritChip = h('button', { class: 'wl-btn', type: 'button' }, '')
       var customChip = h('button', { class: 'wl-btn', type: 'button' }, '单独设置')
       var warnHint = h('div', { class: 'wl-hint', text: '' })
@@ -1294,7 +1344,7 @@
         inheritChip.className = 'wl-btn' + (custom ? '' : ' is-primary')
         customChip.className = 'wl-btn' + (custom ? ' is-primary' : '')
         inheritChip.textContent = '跟随项目 · ' + hoursLabel(projectDefaultHours(categorySelect.value))
-        warnInput.disabled = !custom
+        warnInput.inputs.forEach(function (item) { item.disabled = !custom })
         warnHint.className = 'wl-hint'
         warnHint.textContent = custom
           ? '这项工作按自己设的提前量进「DDL预警」；填 0 或留空则回到跟随项目。'
@@ -1372,6 +1422,107 @@
         placeholder: '可留空：比如「按上线顺序拆」「每步半天以内」「先把测试写完再动手」',
       })
 
+      /* 拆分时附截图：只在这一份请求里用，不落进数据文件。 */
+      var splitImages = []
+      var imageBox = h('div', { class: 'wl-imgs' })
+      var fileInput = h('input', {
+        type: 'file',
+        accept: 'image/png,image/jpeg,image/webp,image/gif',
+        multiple: true,
+        style: { display: 'none' },
+      })
+      var MAX_IMAGES = 4
+
+      var renderImages = function () {
+        imageBox.textContent = ''
+        splitImages.forEach(function (item, index) {
+          imageBox.appendChild(h('div', { class: 'wl-img' },
+            h('img', { src: item.url, alt: item.name }),
+            h('button', {
+              class: 'wl-img-del',
+              type: 'button',
+              title: '移除这张图',
+              onclick: function () {
+                splitImages.splice(index, 1)
+                renderImages()
+              },
+            }, '×')
+          ))
+        })
+        if (splitImages.length < MAX_IMAGES) {
+          imageBox.appendChild(h('button', {
+            class: 'wl-img-add',
+            type: 'button',
+            onclick: function () { fileInput.click() },
+          }, '＋ 图片'))
+        }
+      }
+
+      var shrinkImage = function (file) {
+        return new Promise(function (resolve, reject) {
+          var reader = new window.FileReader()
+          reader.onerror = function () { reject(new Error('读不出这张图')) }
+          reader.onload = function () {
+            var dataUrl = String(reader.result || '')
+            var image = new window.Image()
+            image.onerror = function () { reject(new Error('这张图解不开')) }
+            image.onload = function () {
+              var width = image.naturalWidth || image.width
+              var height = image.naturalHeight || image.height
+              var limit = 1568
+              var scale = Math.min(1, limit / Math.max(width, height))
+              var tooBig = file.size > 1200 * 1024
+              if (scale >= 1 && !tooBig) {
+                resolve({ url: dataUrl, mediaType: file.type })
+                return
+              }
+              try {
+                var canvas = document.createElement('canvas')
+                canvas.width = Math.max(1, Math.round(width * scale))
+                canvas.height = Math.max(1, Math.round(height * scale))
+                var context = canvas.getContext('2d')
+                context.drawImage(image, 0, 0, canvas.width, canvas.height)
+                resolve({ url: canvas.toDataURL('image/jpeg', 0.86), mediaType: 'image/jpeg' })
+              } catch (error) {
+                resolve({ url: dataUrl, mediaType: file.type })
+              }
+            }
+            image.src = dataUrl
+          }
+          reader.readAsDataURL(file)
+        })
+      }
+
+      fileInput.addEventListener('change', function () {
+        var files = Array.prototype.slice.call(fileInput.files || [])
+        fileInput.value = ''
+        var room = MAX_IMAGES - splitImages.length
+        if (room <= 0) {
+          splitHint.className = 'wl-hint is-error'
+          splitHint.textContent = '最多附 ' + MAX_IMAGES + ' 张图。'
+          return
+        }
+        files.slice(0, room).forEach(function (file) {
+          if (!/^image\//.test(file.type)) return
+          if (file.size > 8 * 1024 * 1024) {
+            splitHint.className = 'wl-hint is-error'
+            splitHint.textContent = '「' + file.name + '」超过 8MB，先压小一点。'
+            return
+          }
+          shrinkImage(file).then(function (result) {
+            splitImages.push({ name: file.name, mediaType: result.mediaType, url: result.url, data: result.url.split(',')[1] || '' })
+            renderImages()
+            splitHint.className = 'wl-hint'
+            splitHint.textContent = splitImages.length + ' 张图会随这次拆分一起交给 DSH。'
+          }).catch(function (error) {
+            splitHint.className = 'wl-hint is-error'
+            splitHint.textContent = String(error && error.message ? error.message : error)
+          })
+        })
+      })
+
+      renderImages()
+
       var splitButton = h('button', {
         class: 'wl-btn',
         onclick: function () {
@@ -1379,6 +1530,7 @@
             title: titleInput.value.trim(),
             note: noteInput.value.trim(),
             hint: splitRequest.value.trim(),
+            images: splitImages.map(function (item) { return { name: item.name, mediaType: item.mediaType, data: item.data } }),
             categoryTitle: categorySelect.selectedOptions[0] !== undefined ? categorySelect.selectedOptions[0].textContent : '',
             projectTitle: '',
             steps: steps.filter(function (s) { return s.title.trim() !== '' }).map(function (s) { return { title: s.title, weight: s.weight } }),
@@ -1430,7 +1582,7 @@
           weight: Number.isFinite(weight) && weight > 0 ? weight : 1,
           dueAt: parseDateInput(dueInput.value),
           note: noteInput.value.trim(),
-          warnHours: warnMode === 'custom' ? (Number(warnInput.value) > 0 ? Number(warnInput.value) : null) : null,
+          warnHours: warnMode === 'custom' ? warnInput.get() : null,
           steps: steps
             .filter(function (step) { return step.title.trim() !== '' })
             .map(function (step) { return { id: step.id, title: step.title.trim(), weight: step.weight, done: step.done === true } }),
@@ -1496,7 +1648,7 @@
             h('span', { class: 'wl-label', text: '预警' }),
             h('div', { class: 'wl-row', style: { alignItems: 'center' } },
               h('div', { class: 'wl-chips', style: { margin: '0' } }, inheritChip, customChip),
-              warnInput
+              warnInput.el
             ),
             warnHint
           ),
@@ -1511,7 +1663,9 @@
           h('div', { class: 'wl-split-bar' },
             h('div', { class: 'wl-field', style: { gap: '4px' } },
               h('span', { class: 'wl-label', text: '拆分要求（可选）' }),
-              splitRequest
+              splitRequest,
+              imageBox,
+              fileInput
             ),
             h('div', { class: 'wl-split-row' },
               splitButton,
@@ -1702,22 +1856,22 @@
     var openWarnModal = function (project) {
       var current = Number(project.warnHours)
       if (!isFinite(current) || current <= 0) current = 24
-      var input = h('input', { class: 'wl-input', type: 'number', min: '1', max: '720', step: '1', value: String(current) })
-      var hint = h('div', { class: 'wl-hint', text: '项目默认提前多少小时预警。每条工作可以在编辑窗口里单独设一个；没单独设的就跟这里走。' })
+      var input = makeHoursField(current)
+      var hint = h('div', { class: 'wl-hint', text: '项目默认提前多久预警。每条工作可以在编辑窗口里单独设一个；没单独设的就跟这里走。' })
       var presets = [1, 6, 12, 24, 48, 72, 168]
       var chips = h('div', { class: 'wl-chips' }, presets.map(function (hours) {
         return h('button', {
           class: 'wl-btn',
           type: 'button',
-          onclick: function () { input.value = String(hours) },
+          onclick: function () { input.set(hours) },
         }, hoursLabel(hours))
       }))
 
       var save = function () {
-        var hours = Math.round(Number(input.value))
-        if (!isFinite(hours) || hours < 1) {
+        var hours = input.get()
+        if (hours === null || hours < 1) {
           hint.className = 'wl-hint is-error'
-          hint.textContent = '最少 1 小时。'
+          hint.textContent = '最少 1 小时（天数或小时至少填一个）。'
           return
         }
         request('PATCH', '/projects/' + encodeURIComponent(project.id), { warnHours: hours })
@@ -1733,8 +1887,8 @@
         ),
         h('div', { class: 'wl-win-body' },
           h('div', { class: 'wl-field' },
-            h('span', { class: 'wl-label', text: '提前量（小时）' }),
-            input
+            h('span', { class: 'wl-label', text: '提前量' }),
+            input.el
           ),
           chips,
           hint,
@@ -1746,8 +1900,8 @@
           h('button', { class: 'wl-btn is-primary', onclick: save }, '保存')
         )
       ))
-      input.focus()
-      input.select()
+      input.inputs[0].focus()
+      input.inputs[0].select()
     }
 
     var onKey = function (event) {
