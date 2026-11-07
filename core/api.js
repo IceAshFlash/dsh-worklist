@@ -507,6 +507,87 @@ $owner.Close()
     })
   })
 
+  /* ---------------- 把主窗口收到任务栏 ---------------- */
+
+  // 页面没有「最小化自己所在窗口」的权限，只能借 PowerShell 调 user32：
+  // 枚举顶层窗口，标题里含 match 的（比如 127.0.0.1:7419）就 ShowWindow(SW_MINIMIZE)。
+  const minimizeByTitle = (match) => new Promise((resolve, reject) => {
+    if (process.platform !== 'win32') {
+      reject(new ApiError(501, '这个能力只在 Windows 上有'))
+      return
+    }
+    const stamp = `${process.pid}-${Date.now()}`
+    const script = `param([string]$Needle)
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class WlWin {
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+}
+"@
+$hits = New-Object System.Collections.ArrayList
+$cb = [WlWin+EnumProc]{
+  param($hWnd, $lParam)
+  if ([WlWin]::IsWindowVisible($hWnd)) {
+    $buf = New-Object System.Text.StringBuilder 512
+    [void][WlWin]::GetWindowTextW($hWnd, $buf, 512)
+    $title = $buf.ToString()
+    if ($title -and $title.IndexOf($Needle, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+      [void]$hits.Add($hWnd)
+    }
+  }
+  return $true
+}
+[void][WlWin]::EnumWindows($cb, [IntPtr]::Zero)
+$count = 0
+foreach ($h in $hits) { if ([WlWin]::ShowWindow($h, 6)) { $count++ } }
+Write-Output ("OK " + $count)
+`
+    let scriptFile = null
+    try {
+      scriptFile = writeTempScript(`wl-min-${stamp}.ps1`, `\uFEFF${script}`)
+    } catch (error) {
+      reject(error)
+      return
+    }
+    const cleanup = () => {
+      try { fs.unlinkSync(scriptFile) } catch { /* 没写出来就算了 */ }
+    }
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptFile, String(match)],
+      { windowsHide: true },
+    )
+    let out = ''
+    let settled = false
+    const finish = (fn, value) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      fn(value)
+    }
+    const timer = setTimeout(() => {
+      try { child.kill() } catch { /* 已经退了 */ }
+      finish(reject, new ApiError(504, '最小化超时'))
+    }, 8000)
+    child.stdout?.on('data', (chunk) => { out += String(chunk) })
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      finish(reject, new ApiError(500, `起不了 PowerShell：${String(error?.code ?? error)}`))
+    })
+    child.on('exit', () => {
+      clearTimeout(timer)
+      const count = Number((/OK (\d+)/.exec(out) ?? [])[1] ?? 0)
+      finish(resolve, count)
+    })
+  })
+
   /* ---------------- 路由表 ---------------- */
 
   const routes = [
@@ -522,6 +603,12 @@ $owner.Close()
       status: 200,
       body: { ok: true, path: await pickSystemFolder() },
     })],
+    ['POST', /^\/window\/minimize$/, async ({ body }) => {
+      const match = text(body.match).slice(0, 120)
+      if (match === '') throw bad('要给一个用来认窗口的标题片段')
+      const minimized = await minimizeByTitle(match)
+      return { status: 200, body: { ok: true, minimized, match } }
+    }],
     ['GET', /^\/state$/, async () => ({ status: 200, body: { ok: true, state: await snapshot() } })],
     ['GET', /^\/meta$/, async () => ({
       status: 200,

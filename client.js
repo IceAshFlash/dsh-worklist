@@ -53,6 +53,7 @@ window.__ModuleLoader__.load({
     // 专注小窗：Document PiP 窗口里是一整页，独立窗口里是一块浮层
     '.wl-mini-doc{margin:0;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1c1f24);font-family:var(--dsw-font-family,-apple-system,"Segoe UI",system-ui,sans-serif);font-size:13px}',
     '.wl-icon.is-mini{flex:none}',
+    '.wl-side-acts{display:flex;align-items:center;gap:2px;margin-left:auto;flex:none}',
     '.wl-icon.is-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}',
     '.wl-mini{display:flex;flex-direction:column;height:100vh;box-sizing:border-box;padding:6px 10px 10px}',
     '.wl-mini-head{display:flex;align-items:center;gap:8px;padding:4px 0 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#e2e6eb);flex:none}',
@@ -673,7 +674,7 @@ window.__ModuleLoader__.load({
       mini.categoryId = category.id
       view.expanded[category.id] = true
       var pip = window.documentPictureInPicture
-      if (window.__wlMiniPiP === true && pip && typeof pip.requestWindow === 'function') {
+      if (window.__wlMiniOverlay !== true && pip && typeof pip.requestWindow === 'function') {
         Promise.resolve(pip.requestWindow({ width: 300, height: 380 })).then(function (win) {
           mini.win = win
           var pipDoc = win.document
@@ -690,6 +691,8 @@ window.__ModuleLoader__.load({
           })
           renderMiniBody()
           render()
+          // 小窗钉在最上层之后，把主窗口收到任务栏（页面自己做不到，交给本地服务调 Win32）
+          sendToBackground()
         }).catch(function () {
           startOverlayMini(project, category)
           render()
@@ -698,6 +701,22 @@ window.__ModuleLoader__.load({
       }
       startOverlayMini(project, category)
       render()
+    }
+
+    // 让承载页面的主窗口最小化到任务栏。页面没这个权限，POST 给本地服务由它调 user32。
+    // 独立窗口（127.0.0.1:<port> 标题）与 DSH 窗口都能匹配；失败就当没这回事。
+    var sendToBackground = function () {
+      if (typeof window === 'undefined' || window.location === undefined) return
+      var host = String(window.location.host || '')
+      if (host === '') return
+      setTimeout(function () {
+        request('POST', '/window/minimize', { match: host }).then(function (reply) {
+          if (reply !== null && reply.minimized > 0) return
+          // 独立窗口的标题是 127.0.0.1:<端口>；DSH 面板这边标题里没有端口，
+          // 退回按应用名找一次（找不到就算了，不打扰）。
+          return request('POST', '/window/minimize', { match: 'DeepSeek' })
+        }).catch(function () { /* 忽略 */ })
+      }, 350)
     }
 
     // 给任意文档（宿主文档 / PiP 文档）设标题：
@@ -721,19 +740,21 @@ window.__ModuleLoader__.load({
       var side = h('div', { class: 'wl-side' })
       side.appendChild(h('div', { class: 'wl-side-head' },
         h('span', { text: '项目' }),
-        h('button', {
-          class: 'wl-icon',
-          type: 'button',
-          title: '视图选项：归档显示方式',
-          'aria-label': '视图选项',
-          'aria-haspopup': 'menu',
-          onclick: function () { openViewMenu(this) },
-        }, iconSliders(16)),
-        h('button', {
-          class: 'wl-btn is-ghost',
-          title: '新建项目',
-          onclick: function () { openProjectModal() },
-        }, '＋')
+        h('div', { class: 'wl-side-acts' },
+          h('button', {
+            class: 'wl-icon',
+            type: 'button',
+            title: '视图选项：归档显示方式',
+            'aria-label': '视图选项',
+            'aria-haspopup': 'menu',
+            onclick: function () { openViewMenu(this) },
+          }, iconSliders(16)),
+          h('button', {
+            class: 'wl-btn is-ghost',
+            title: '新建项目',
+            onclick: function () { openProjectModal() },
+          }, '＋')
+        )
       ))
       var list = h('div', { class: 'wl-side-list' })
       var projects = view.data === null ? [] : view.data.projects.filter(visibleArchived)
