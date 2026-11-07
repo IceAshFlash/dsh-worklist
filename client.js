@@ -50,6 +50,29 @@ window.__ModuleLoader__.load({
     '.wl-viewbtn-text{letter-spacing:.2px}',
     '.wl-caret{font-size:9px;line-height:1;opacity:.7}',
     '.wl-ver{padding:0 12px 10px;font-size:10px;line-height:1;color:var(--dsw-alias-label-tertiary,#8b929c);user-select:text}',
+    // 专注小窗：Document PiP 窗口里是一整页，独立窗口里是一块浮层
+    '.wl-mini-doc{margin:0;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1c1f24);font-family:var(--dsw-font-family,-apple-system,"Segoe UI",system-ui,sans-serif);font-size:13px}',
+    '.wl-mini{display:flex;flex-direction:column;height:100vh;box-sizing:border-box;padding:6px 10px 10px}',
+    '.wl-mini-head{display:flex;align-items:center;gap:8px;padding:4px 0 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#e2e6eb);flex:none}',
+    '.wl-mini-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.wl-mini-count{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary,#5b6470);font-variant-numeric:tabular-nums}',
+    '.wl-mini-list{flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:6px}',
+    '.wl-mini-task{margin-bottom:2px}',
+    '.wl-mini-task.is-done .wl-mini-title{color:var(--dsw-alias-label-tertiary,#8b929c);text-decoration:line-through}',
+    '.wl-mini-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-radius:6px}',
+    '.wl-mini-row:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}',
+    '.wl-mini-title{flex:1 1 auto;min-width:0;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.wl-mini-pct{font-size:11px;color:var(--dsw-alias-label-secondary,#5b6470);font-variant-numeric:tabular-nums}',
+    '.wl-mini-steps{padding:2px 0 6px 26px;display:flex;flex-direction:column;gap:2px}',
+    '.wl-mini-step{display:flex;align-items:center;gap:8px;padding:3px 4px;border-radius:5px;font-size:12px;color:var(--dsw-alias-label-secondary,#5b6470)}',
+    '.wl-mini-step-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.wl-mini-step.is-done .wl-mini-step-name{text-decoration:line-through;opacity:.65}',
+    '.wl-mini-overlay{position:fixed;z-index:9999;left:calc(50% - 170px);top:72px;width:340px;height:460px;min-width:260px;min-height:240px;display:flex;flex-direction:column;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);border-radius:10px;box-shadow:0 18px 48px rgba(15,23,42,.28);resize:both;overflow:hidden}',
+    '.wl-mini-overlay .wl-mini-drag{padding:6px 10px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c);background:var(--dsw-alias-bg-layer-2,#eef1f5);border-bottom:1px solid var(--dsw-alias-border-l1,#e2e6eb);cursor:move;user-select:none;flex:none}',
+    '.wl-mini-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding:4px 8px 8px}',
+    '.wl-mini-away{flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:24px}',
+    '.wl-mini-away-card{max-width:380px;padding:20px 22px;border:1px solid var(--dsw-alias-border-l2,#d3d8df);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#f6f8fa);display:flex;flex-direction:column;gap:10px}',
+    '.wl-mini-away-title{font-size:14px;font-weight:600}',
     '.wl-menu-label{padding:6px 10px 2px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c)}',
     '.wl-menu-icon{width:16px;height:16px;flex:0 0 16px;display:inline-flex;align-items:center;justify-content:center;opacity:.9}',
     '.wl-menu-text{flex:1 1 auto;text-align:left}',
@@ -172,7 +195,9 @@ window.__ModuleLoader__.load({
     var tag = doc.createElement('style')
     tag.id = STYLE_ID
     tag.textContent = CSS
-    doc.head.appendChild(tag)
+    var parent = doc.head || doc.documentElement
+    if (parent === null) return
+    parent.appendChild(tag)
   }
 
   var h = function (tag, props) {
@@ -391,6 +416,15 @@ window.__ModuleLoader__.load({
     /* ---------------- 渲染 ---------------- */
 
     var render = function () {
+      if (mini.categoryId !== null) {
+        // 小窗开着的时候，主面板让位：只留一张「回到大窗口」的卡片，
+        // 免得两处同时改同一批数据看不出效果。
+        root.textContent = ''
+        root.className = 'wl-root'
+        root.appendChild(renderMiniPlaceholder())
+        if (mini.root !== null) renderMiniBody()
+        return
+      }
       var scrollTop = 0
       var scroller = root.querySelector('.wl-scroll')
       if (scroller !== null) scrollTop = scroller.scrollTop
@@ -410,6 +444,220 @@ window.__ModuleLoader__.load({
 
       var next = root.querySelector('.wl-scroll')
       if (next !== null && scrollTop > 0) next.scrollTop = scrollTop
+    }
+
+    /* ---------------- 专注小窗 ---------------- */
+
+    /*
+     * 一个分类单独拎出来，钉在屏幕最上层。
+     *
+     * 优先用 Document Picture-in-Picture：Chromium 里它是真正的独立窗口，
+     * 系统级置顶、能自由拉大小，切到别的应用上也不会被盖住。
+     * 拿不到就退回页面内的浮动小窗（可拖、可拉、层级最高）——
+     * 效果差一档，但至少能用。
+     */
+    var mini = { categoryId: null, root: null, win: null, overlay: null, drag: null }
+
+    var findCategory = function (categoryId) {
+      if (view.data === null) return null
+      for (var i = 0; i < view.data.projects.length; i += 1) {
+        var project = view.data.projects[i]
+        for (var j = 0; j < project.categories.length; j += 1) {
+          if (project.categories[j].id === categoryId) {
+            return { project: project, category: project.categories[j] }
+          }
+        }
+      }
+      return null
+    }
+
+    var copyThemeVars = function (doc, from) {
+      var names = [
+        '--dsw-alias-bg-base', '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2',
+        '--dsw-alias-bg-overlay', '--dsw-alias-border-l1', '--dsw-alias-border-l2',
+        '--dsw-alias-label-primary', '--dsw-alias-label-secondary', '--dsw-alias-label-tertiary',
+        '--dsw-alias-interactive-bg-hover', '--dsw-alias-interactive-bg-pressed',
+        '--wl-accent', '--wl-accent-hover', '--wl-danger', '--dsw-font-family',
+      ]
+      var computed = window.getComputedStyle(from)
+      names.forEach(function (name) {
+        var value = computed.getPropertyValue(name)
+        if (value !== '') doc.body.style.setProperty(name, value.trim())
+      })
+      doc.body.style.setProperty('background-color', computed.getPropertyValue('--dsw-alias-bg-base').trim() || '#fff')
+    }
+
+    var miniStepRow = function (realId, step) {
+      return h('div', { class: 'wl-mini-step' + (step.done ? ' is-done' : '') },
+        h('button', {
+          class: 'wl-check' + (step.done ? ' is-on' : ''),
+          style: { width: '13px', height: '13px' },
+          title: step.done ? '标记为未完成' : '标记为完成',
+          onclick: function () {
+            request('PATCH', '/tasks/' + encodeURIComponent(realId) + '/steps/' + encodeURIComponent(step.id), { done: !step.done })
+              .then(function () { return refresh() })
+              .catch(function (error) { notifyError(error) })
+          },
+        }, step.done ? '✓' : ''),
+        h('span', { class: 'wl-mini-step-name', text: step.title }),
+        h('span', { class: 'wl-chip', text: '权重 ' + step.weight })
+      )
+    }
+
+    var miniTaskBlock = function (task) {
+      var realId = task.cloneOf || task.id
+      var done = task.progress >= 1
+      var expanded = view.expanded['m:' + realId] === true
+      var box = h('div', { class: 'wl-mini-task' + (done ? ' is-done' : '') })
+      box.appendChild(h('div', { class: 'wl-mini-row' },
+        h('button', {
+          class: 'wl-check' + (done ? ' is-on' : ''),
+          title: done ? '标记为未完成' : '标记为完成',
+          onclick: function (event) {
+            event.stopPropagation()
+            toggleDone(realId, task, !done)
+          },
+        }, done ? '✓' : ''),
+        h('span', {
+          class: 'wl-mini-title',
+          text: task.title,
+          title: task.title,
+          onclick: function () {
+            view.expanded['m:' + realId] = !expanded
+            renderMiniBody()
+          },
+        }),
+        task.steps.length > 0
+          ? h('span', { class: 'wl-chip', text: task.steps.filter(function (s) { return s.done }).length + '/' + task.steps.length })
+          : null,
+        h('span', { class: 'wl-mini-pct', text: pct(task.progress) })
+      ))
+      if (expanded && task.steps.length > 0) {
+        var steps = h('div', { class: 'wl-mini-steps' })
+        task.steps.forEach(function (step) { steps.appendChild(miniStepRow(realId, step)) })
+        box.appendChild(steps)
+      }
+      return box
+    }
+
+    var renderMiniBody = function () {
+      if (mini.root === null) return
+      var found = findCategory(mini.categoryId)
+      mini.root.textContent = ''
+      if (found === null) {
+        mini.root.appendChild(h('div', { class: 'wl-hint', text: '这个分类已经不在了。' }))
+        return
+      }
+      var category = found.category
+      mini.root.appendChild(h('div', { class: 'wl-mini-head' },
+        h('span', { class: 'wl-dot', style: { background: category.color } }),
+        h('span', { class: 'wl-mini-name', text: category.title, title: category.title }),
+        h('span', { class: 'wl-mini-count', text: pct(category.progress) + ' · ' + category.openCount + '/' + category.taskCount }),
+        h('button', {
+          class: 'wl-icon',
+          title: '关掉小窗，回主界面',
+          onclick: function () { closeMini() },
+        }, '✕')
+      ))
+      var list = h('div', { class: 'wl-mini-list' })
+      var tasks = category.tasks.filter(visibleArchived)
+      if (tasks.length === 0) {
+        list.appendChild(h('div', { class: 'wl-hint', style: { padding: '10px 2px' }, text: '这个分类下还没有工作。' }))
+      }
+      tasks.forEach(function (task) { list.appendChild(miniTaskBlock(task)) })
+      mini.root.appendChild(list)
+    }
+
+    var renderMiniPlaceholder = function () {
+      var found = findCategory(mini.categoryId)
+      var name = found === null ? '' : found.category.title
+      return h('div', { class: 'wl-mini-away' },
+        h('div', { class: 'wl-mini-away-card' },
+          h('div', { class: 'wl-mini-away-title', text: '「' + name + '」正在小窗里' }),
+          h('div', { class: 'wl-hint', text: '小窗钉在屏幕最上层，勾选会直接写回清单。关掉小窗就回到这里。' }),
+          h('div', { class: 'wl-modal-actions' },
+            h('button', {
+              class: 'wl-btn is-ghost',
+              text: '回到主界面',
+              onclick: function () { closeMini() },
+            })
+          )
+        )
+      )
+    }
+
+    var closeMini = function () {
+      mini.categoryId = null
+      if (mini.win !== null) {
+        var win = mini.win
+        mini.win = null
+        try { win.close() } catch (error) { /* 窗口已经没了 */ }
+      }
+      if (mini.overlay !== null) {
+        mini.overlay.remove()
+        mini.overlay = null
+      }
+      mini.root = null
+      render()
+    }
+
+    var startOverlayMini = function (category) {
+      var box = h('div', { class: 'wl-mini-overlay' })
+      var head = h('div', { class: 'wl-mini-drag' }, h('span', { text: '拖动这里移动窗口' }))
+      mini.root = h('div', { class: 'wl-mini-body' })
+      box.appendChild(head)
+      box.appendChild(mini.root)
+      doc.body.appendChild(box)
+      mini.overlay = box
+      // 拖拽：按住顶部把整块挪走
+      head.addEventListener('mousedown', function (event) {
+        event.preventDefault()
+        var start = { x: event.clientX, y: event.clientY, left: box.offsetLeft, top: box.offsetTop }
+        var move = function (e) {
+          box.style.left = Math.max(0, start.left + e.clientX - start.x) + 'px'
+          box.style.top = Math.max(0, start.top + e.clientY - start.y) + 'px'
+        }
+        var up = function () {
+          doc.removeEventListener('mousemove', move)
+          doc.removeEventListener('mouseup', up)
+        }
+        doc.addEventListener('mousemove', move)
+        doc.addEventListener('mouseup', up)
+      })
+      renderMiniBody()
+      return category
+    }
+
+    var openMini = function (project, category) {
+      if (mini.categoryId === category.id) { closeMini(); return }
+      if (mini.categoryId !== null) closeMini()
+      mini.categoryId = category.id
+      view.expanded[category.id] = true
+      var pip = window.documentPictureInPicture
+      if (pip && typeof pip.requestWindow === 'function') {
+        Promise.resolve(pip.requestWindow({ width: 340, height: 520 })).then(function (win) {
+          mini.win = win
+          var pipDoc = win.document
+          try { pipDoc.title = '工作清单 · ' + category.title } catch (error) { /* 有些实现不让改标题 */ }
+          ensureStyle(pipDoc)
+          copyThemeVars(pipDoc, root)
+          pipDoc.body.className = 'wl-mini-doc'
+          mini.root = pipDoc.createElement('div')
+          mini.root.className = 'wl-mini'
+          pipDoc.body.appendChild(mini.root)
+          win.addEventListener('pagehide', function () {
+            if (mini.win === win) { mini.categoryId = null; mini.win = null; mini.root = null; render() }
+          })
+          renderMiniBody()
+          render()
+        }).catch(function () {
+          startOverlayMini(category)
+          render()
+        })
+        return
+      }
+      startOverlayMini(category)
+      render()
     }
 
     var renderSide = function () {
@@ -693,6 +941,14 @@ window.__ModuleLoader__.load({
           },
         }, '✎'))
       }
+      head.appendChild(h('button', {
+        class: 'wl-icon',
+        title: '专注小窗：只显示这个分类的工作和步骤，钉在屏幕最上层',
+        onclick: function (event) {
+          event.stopPropagation()
+          openMini(project, category)
+        },
+      }, iconMiniWindow()))
       head.addEventListener('click', function () {
         view.expanded[category.id] = !open
         render()
@@ -840,6 +1096,15 @@ window.__ModuleLoader__.load({
         'stroke-linejoin': 'round',
         'aria-hidden': 'true',
       }, children.filter(function (child) { return child !== null }))
+    }
+
+    // 专注小窗：一枚「窗口套窗口」的图标，和 ＋/✎ 这些字符按钮并排
+    var iconMiniWindow = function () {
+      return svgIcon([
+        h('rect', { key: 'a', x: 1.4, y: 2.6, width: 13.2, height: 10.8, rx: 1.6 }),
+        h('path', { key: 'b', d: 'M1.4 6.1h13.2' }),
+        h('path', { key: 'c', d: 'M8.6 6.1v7.3' }),
+      ])
     }
 
     // IconSlidersTwoOutlineRegular —— DSH「视图选项」用的就是它（两条滑杆 + 两个旋钮）
@@ -1954,6 +2219,16 @@ window.__ModuleLoader__.load({
         pollTimer = null
         doc.removeEventListener('visibilitychange', poll)
         doc.removeEventListener('keydown', onKey)
+        if (mini.win !== null) {
+          try { mini.win.close() } catch (error) { /* 已经关了 */ }
+          mini.win = null
+        }
+        if (mini.overlay !== null) {
+          mini.overlay.remove()
+          mini.overlay = null
+        }
+        mini.categoryId = null
+        mini.root = null
         closeModal()
         root.textContent = ''
       },
