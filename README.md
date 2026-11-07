@@ -204,7 +204,9 @@ bin/build.js          把 ui/app.js 内联进 client.js（client 只能加载一
 bin/worklist.js       独立模式：list / path / serve [--port] [--open]
 bin/worklist-open.vbs 快捷方式的入口，隐藏控制台起 node
 bin/shortcut.js       生成/重建桌面快捷方式（也可以在面板里点按钮）
-bin/make-icon.js      零依赖生成 bin/icon.ico
+bin/make-icon.py      把 icon/icon.png 转成多尺寸 bin/icon.ico（Pillow）
+icon/icon.png         图标母版 1024×1024（从设计稿里裁出的清单卡 + 绿色圆角底）
+icon/icon-512.png     同上，512 像素版，给网页/文档用
 ui/standalone.html    独立模式的外壳，补一套 --dsw-alias-* 变量（含深色）
 test/smoke.mjs        端到端冒烟：65 项断言
 ```
@@ -349,6 +351,22 @@ Agent 侧对应的是工具 `worklist`：
   上，PATH 里又没有 node，于是弹出 `80070002 系统找不到指定的文件`。
 - 这个文件必须存成 **UTF-16LE 带 BOM**（或纯 ASCII）。UTF-8 的中文被 VBScript 按 GBK 解码时，
   末尾字节会把后面的引号吃掉，报 `未结束的字符串常量` —— 行号还指在错误的地方，很难查。
+
+## 图标
+
+图标母版是 `icon/icon.png`（1024×1024）：从设计稿里把清单卡单独抠出来，配一层绿色圆角底，
+所以在任务栏和桌面上是实心的一块，不会缩到 16px 变成灰点。
+
+| 文件 | 用在哪 |
+| --- | --- |
+| `icon/icon.png` | 母版；独立窗口的 `/icon.png`、Apple touch icon |
+| `icon/icon-512.png` | 512 像素版，README/商店页这类地方用 |
+| `bin/icon.ico` | 桌面快捷方式的图标、独立窗口的 favicon（16/24/32/48/64/128/256 七档） |
+| `icon.svg` | DSH 侧栏用的单色线条图标，跟着主题色走，和上面那套彩色图标是**有意分开**的 |
+
+换母版之后跑一次 `python bin/make-icon.py` 重生成 ico，再重建一次桌面快捷方式
+（面板里点「放到桌面」或 `node bin/shortcut.js`）。Windows 会缓存旧图标，
+如果资源管理器还显示老样子，注销/重启或清一下 `%LOCALAPPDATA%\IconCache.db` 就好。
 
 ## 踩过的坑（别再踩）
 

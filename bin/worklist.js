@@ -80,6 +80,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.png': 'image/png',
   '.json': 'application/json; charset=utf-8',
 }
 
@@ -106,6 +107,17 @@ const makeServer = (api) => http.createServer(async (req, res) => {
       const js = fs.readFileSync(path.join(PACKAGE, 'ui', 'app.js'))
       res.writeHead(200, { 'content-type': MIME['.js'], 'cache-control': 'no-store' })
       res.end(js)
+      return
+    }
+    if (url.pathname === '/icon.png') {
+      const png = path.join(PACKAGE, 'icon', 'icon.png')
+      if (fs.existsSync(png)) {
+        res.writeHead(200, { 'content-type': MIME['.png'], 'cache-control': 'max-age=3600' })
+        res.end(fs.readFileSync(png))
+        return
+      }
+      res.writeHead(204)
+      res.end()
       return
     }
     if (url.pathname === '/favicon.ico') {
