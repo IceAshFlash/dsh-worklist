@@ -32,8 +32,8 @@
     '.wl-ver{padding:0 12px 10px;font-size:10px;line-height:1;color:var(--dsw-alias-label-tertiary,#8b929c);user-select:text}',
     // 专注小窗：Document PiP 窗口里是一整页，独立窗口里是一块浮层
     '.wl-mini-doc{margin:0;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1c1f24);font-family:var(--dsw-font-family,-apple-system,"Segoe UI",system-ui,sans-serif);font-size:13px}',
-    '.wl-icon.is-mini{flex:none;color:var(--wl-accent,#3f6be6)}',
-    '.wl-icon.is-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));color:var(--wl-accent-hover,#3459c4)}',
+    '.wl-icon.is-mini{flex:none}',
+    '.wl-icon.is-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}',
     '.wl-mini{display:flex;flex-direction:column;height:100vh;box-sizing:border-box;padding:6px 10px 10px}',
     '.wl-mini-head{display:flex;align-items:center;gap:8px;padding:4px 0 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#e2e6eb);flex:none}',
     '.wl-mini-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
@@ -41,6 +41,7 @@
     '.wl-mini-proj{font-size:11px;line-height:1.1;color:var(--dsw-alias-label-tertiary,#8b929c);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-mini-count{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary,#5b6470);font-variant-numeric:tabular-nums}',
     '.wl-mini-list{flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:6px}',
+    '.wl-mini-meta{display:flex;align-items:center;gap:8px;padding:6px 2px 8px;border-bottom:1px solid var(--dsw-alias-border-l1,#e2e6eb);flex:none}',
     '.wl-mini-task{margin-bottom:2px}',
     '.wl-mini-task.is-done .wl-mini-title{color:var(--dsw-alias-label-tertiary,#8b929c);text-decoration:line-through}',
     '.wl-mini-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-radius:6px}',
@@ -51,8 +52,10 @@
     '.wl-mini-step{display:flex;align-items:center;gap:8px;padding:3px 4px;border-radius:5px;font-size:12px;color:var(--dsw-alias-label-secondary,#5b6470)}',
     '.wl-mini-step-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-mini-step.is-done .wl-mini-step-name{text-decoration:line-through;opacity:.65}',
-    '.wl-mini-overlay{position:fixed;z-index:9999;left:calc(50% - 170px);top:72px;width:340px;height:460px;min-width:260px;min-height:240px;display:flex;flex-direction:column;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);border-radius:10px;box-shadow:0 18px 48px rgba(15,23,42,.28);resize:both;overflow:hidden}',
-    '.wl-mini-overlay .wl-mini-drag{padding:6px 10px;font-size:11px;color:var(--dsw-alias-label-tertiary,#8b929c);background:var(--dsw-alias-bg-layer-2,#eef1f5);border-bottom:1px solid var(--dsw-alias-border-l1,#e2e6eb);cursor:move;user-select:none;flex:none}',
+    '.wl-mini-overlay{position:fixed;z-index:9999;left:calc(50% - 150px);top:72px;width:300px;height:380px;min-width:240px;min-height:200px;display:flex;flex-direction:column;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);border-radius:10px;box-shadow:0 18px 48px rgba(15,23,42,.28);resize:both;overflow:hidden}',
+    '.wl-mini-drag{display:flex;align-items:center;gap:7px;padding:0 6px 0 10px;height:30px;font-size:11px;color:var(--dsw-alias-label-secondary,#5b6470);background:var(--dsw-alias-bg-layer-2,#eef1f5);border-bottom:1px solid var(--dsw-alias-border-l1,#e2e6eb);cursor:move;user-select:none;flex:none}',
+    '.wl-mini-drag-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.wl-mini-x{width:20px;height:20px;font-size:11px;cursor:pointer}',
     '.wl-mini-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding:4px 8px 8px}',
     '.wl-mini-away{flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:24px}',
     '.wl-mini-away-card{max-width:380px;padding:20px 22px;border:1px solid var(--dsw-alias-border-l2,#d3d8df);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#f6f8fa);display:flex;flex-direction:column;gap:10px}',
@@ -533,19 +536,27 @@
         return
       }
       var category = found.category
-      mini.root.appendChild(h('div', { class: 'wl-mini-head' },
-        h('span', { class: 'wl-dot', style: { background: category.color } }),
-        h('span', { class: 'wl-mini-titles' },
-          h('span', { class: 'wl-mini-name', text: category.title, title: category.title }),
-          h('span', { class: 'wl-mini-proj', text: found.project.title })
-        ),
-        h('span', { class: 'wl-mini-count', text: pct(category.progress) + ' · ' + category.openCount + '/' + category.taskCount }),
-        h('button', {
-          class: 'wl-icon',
-          title: '关掉小窗，回主界面',
-          onclick: function () { closeMini() },
-        }, '✕')
-      ))
+      if (mini.win === null) {
+        // 页面内小窗：标题和关闭按钮在顶部标题条里，这里只补一行统计
+        mini.root.appendChild(h('div', { class: 'wl-mini-meta' },
+          h('span', { class: 'wl-mini-count', text: pct(category.progress) + ' · ' + category.openCount + '/' + category.taskCount }),
+          bar(category.progress, '96px')
+        ))
+      } else {
+        mini.root.appendChild(h('div', { class: 'wl-mini-head' },
+          h('span', { class: 'wl-dot', style: { background: category.color } }),
+          h('span', { class: 'wl-mini-titles' },
+            h('span', { class: 'wl-mini-name', text: category.title, title: category.title }),
+            h('span', { class: 'wl-mini-proj', text: found.project.title })
+          ),
+          h('span', { class: 'wl-mini-count', text: pct(category.progress) + ' · ' + category.openCount + '/' + category.taskCount }),
+          h('button', {
+            class: 'wl-icon',
+            title: '关掉小窗，回主界面',
+            onclick: function () { closeMini() },
+          }, '✕')
+        ))
+      }
       var list = h('div', { class: 'wl-mini-list' })
       var tasks = category.tasks.filter(visibleArchived)
       if (tasks.length === 0) {
@@ -588,16 +599,34 @@
       render()
     }
 
-    var startOverlayMini = function (category) {
+    var startOverlayMini = function (project, category) {
       var box = h('div', { class: 'wl-mini-overlay' })
-      var head = h('div', { class: 'wl-mini-drag' }, h('span', { text: '拖动这里移动窗口' }))
+      var drag = h('div', { class: 'wl-mini-drag' },
+        h('span', { class: 'wl-dot', style: { background: category.color } }),
+        h('span', { class: 'wl-mini-drag-title', text: project.title + ' · ' + category.title }),
+        h('button', {
+          class: 'wl-icon wl-mini-x',
+          title: '关掉小窗，回主界面',
+          onclick: function (event) {
+            event.stopPropagation()
+            if (mini.overlay !== null) {
+              mini.overlay.remove()
+              mini.overlay = null
+            }
+            mini.categoryId = null
+            mini.root = null
+            render()
+          },
+        }, '✕')
+      )
       mini.root = h('div', { class: 'wl-mini-body' })
-      box.appendChild(head)
+      box.appendChild(drag)
       box.appendChild(mini.root)
       doc.body.appendChild(box)
       mini.overlay = box
-      // 拖拽：按住顶部把整块挪走
-      head.addEventListener('mousedown', function (event) {
+      // 拖拽：按住标题条把整块挪走（按钮上按下不算）
+      drag.addEventListener('mousedown', function (event) {
+        if (event.target !== null && event.target.closest !== undefined && event.target.closest('button') !== null) return
         event.preventDefault()
         var start = { x: event.clientX, y: event.clientY, left: box.offsetLeft, top: box.offsetTop }
         var move = function (e) {
@@ -613,6 +642,42 @@
       })
       renderMiniBody()
       return category
+    }
+
+    // 小窗默认走页面内的独立窗口：标题、大小、层级全由我们说了算。
+    // 浏览器 PiP 窗口的标题栏是 Chromium 自己的（Edge 的 app 窗口里会显示成
+    // 127.0.0.1:7419），不符合这里的要求，所以只在显式打开开关时才用。
+    var openMini = function (project, category) {
+      if (mini.categoryId === category.id) { closeMini(); return }
+      if (mini.categoryId !== null) closeMini()
+      mini.categoryId = category.id
+      view.expanded[category.id] = true
+      var pip = window.documentPictureInPicture
+      if (window.__wlMiniPiP === true && pip && typeof pip.requestWindow === 'function') {
+        Promise.resolve(pip.requestWindow({ width: 300, height: 380 })).then(function (win) {
+          mini.win = win
+          var pipDoc = win.document
+          setDocTitle(pipDoc, '工作清单 · ' + category.title)
+          ensureStyle(pipDoc)
+          setDocTitle(pipDoc, '工作清单 · ' + category.title)
+          copyThemeVars(pipDoc, root)
+          pipDoc.body.className = 'wl-mini-doc'
+          mini.root = pipDoc.createElement('div')
+          mini.root.className = 'wl-mini'
+          pipDoc.body.appendChild(mini.root)
+          win.addEventListener('pagehide', function () {
+            if (mini.win === win) { mini.categoryId = null; mini.win = null; mini.root = null; render() }
+          })
+          renderMiniBody()
+          render()
+        }).catch(function () {
+          startOverlayMini(project, category)
+          render()
+        })
+        return
+      }
+      startOverlayMini(project, category)
+      render()
     }
 
     // 给任意文档（宿主文档 / PiP 文档）设标题：
@@ -632,52 +697,18 @@
       try { target.title = value } catch (error) { /* 同上 */ }
     }
 
-    var openMini = function (project, category) {
-      if (mini.categoryId === category.id) { closeMini(); return }
-      if (mini.categoryId !== null) closeMini()
-      mini.categoryId = category.id
-      view.expanded[category.id] = true
-      var pip = window.documentPictureInPicture
-      if (pip && typeof pip.requestWindow === 'function') {
-        Promise.resolve(pip.requestWindow({ width: 340, height: 520 })).then(function (win) {
-          mini.win = win
-          var pipDoc = win.document
-          // 窗口标题必须是我们自己写的字，绝不能让浏览器退回成地址栏里的主机/IP
-          setDocTitle(pipDoc, '工作清单 · ' + category.title)
-          ensureStyle(pipDoc)
-          setDocTitle(pipDoc, '工作清单 · ' + category.title)
-          copyThemeVars(pipDoc, root)
-          pipDoc.body.className = 'wl-mini-doc'
-          mini.root = pipDoc.createElement('div')
-          mini.root.className = 'wl-mini'
-          pipDoc.body.appendChild(mini.root)
-          win.addEventListener('pagehide', function () {
-            if (mini.win === win) { mini.categoryId = null; mini.win = null; mini.root = null; render() }
-          })
-          renderMiniBody()
-          render()
-        }).catch(function () {
-          startOverlayMini(category)
-          render()
-        })
-        return
-      }
-      startOverlayMini(category)
-      render()
-    }
-
     var renderSide = function () {
       var side = h('div', { class: 'wl-side' })
       side.appendChild(h('div', { class: 'wl-side-head' },
         h('span', { text: '项目' }),
         h('button', {
-          class: 'wl-viewbtn',
+          class: 'wl-icon',
           type: 'button',
           title: '视图选项：归档显示方式',
           'aria-label': '视图选项',
           'aria-haspopup': 'menu',
           onclick: function () { openViewMenu(this) },
-        }, iconSliders(16), h('span', { class: 'wl-viewbtn-text', text: '视图' }), h('span', { class: 'wl-caret', text: '▾' })),
+        }, iconSliders(16)),
         h('button', {
           class: 'wl-btn is-ghost',
           title: '新建项目',
@@ -1111,7 +1142,7 @@
       node.setAttribute('viewBox', '0 0 16 16')
       node.setAttribute('fill', 'none')
       node.setAttribute('stroke', 'currentColor')
-      node.setAttribute('stroke-width', '1.6')
+      node.setAttribute('stroke-width', '1.5')
       node.setAttribute('stroke-linecap', 'round')
       node.setAttribute('stroke-linejoin', 'round')
       node.setAttribute('aria-hidden', 'true')
