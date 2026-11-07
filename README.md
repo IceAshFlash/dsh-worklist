@@ -294,6 +294,10 @@ curl -X DELETE "http://127.0.0.1:7419/api/projects/<id>?files=1"
 
 ⚠️ 这两条路由里的中文**不能过命令行、也不能过标准输出**：Windows PowerShell 5.1 用 OEM(GBK) 写 stdout，Node 按 UTF-8 读回来就是乱码；反过来把中文写在命令行参数里传给 `powershell -File` 同样会被毁掉，窗口就永远匹配不上（表现为 `minimized: 0`、`detail` 为空）。所以 needle 用 base64 传进去，结果写 UTF-8 临时文件再由 Node 读——`core/api.js` 的 `minimizeByTitle` 就是这么做的。
 
+再补一条 Windows 上的坑：**PiP 小窗是主窗口的从属窗口**，主窗口一最小化，它会被一起收走。所以收完主窗口之后，客户端还会隔 120/420/900/1600ms 调 `POST /window/restore { prefix: "工作清单 · " }`，按标题前缀把那个小窗单独叫回来（`RestoreLike` → `ShowWindow(SW_RESTORE)`）。
+
+小窗的尺寸：`requestWindow({ width, height })` 在不同 Chromium 版本里只是「期望值」，有的会沿用上次窗口大小、有的按内容撑开，脚本的 `resizeTo` 也可能被忽略。这里传了 `preferInitialWindowPlacement: true` 并在 0/120/400/900/1600ms 各压一次 `resizeTo(256, 256)`；**把鼠标停在小窗上**，`title` 里会显示它实际的内尺寸，排查时用得上。
+
 ## 接口
 
 `core/api.js` 里的路由表，前缀由宿主给：
