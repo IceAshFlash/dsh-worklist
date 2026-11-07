@@ -12,3 +12,6 @@ debug.log
 
 # 分发包
 *.zip
+
+# 桌面快捷方式的图标副本（按内容哈希命名，用来甩掉 Explorer 图标缓存）
+bin/.icons/

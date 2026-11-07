@@ -11,6 +11,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -324,8 +325,22 @@ const installDesktopShortcut = () => {
   }
   const packageRoot = path.dirname(fileURLToPath(import.meta.url))
   const vbs = path.join(packageRoot, 'bin', 'worklist-open.vbs') // ui-copy-ignore
-  const icon = path.join(packageRoot, 'bin', 'icon.ico') // ui-copy-ignore
+  const sourceIcon = path.join(packageRoot, 'bin', 'icon.ico') // ui-copy-ignore
   if (!fs.existsSync(vbs)) return { ok: false, error: `缺 ${vbs}` }
+  // 图标按内容哈希换个文件名：Explorer 的图标缓存是按「路径」记的，同名覆盖它不认。
+  let icon = sourceIcon
+  try {
+    const digest = createHash('sha256').update(fs.readFileSync(sourceIcon)).digest('hex').slice(0, 8)
+    const dir = path.join(packageRoot, 'bin', '.icons')
+    fs.mkdirSync(dir, { recursive: true })
+    icon = path.join(dir, `icon-${digest}.ico`)
+    if (!fs.existsSync(icon)) fs.copyFileSync(sourceIcon, icon)
+    for (const entry of fs.readdirSync(dir)) {
+      if (entry !== path.basename(icon)) fs.rmSync(path.join(dir, entry), { force: true })
+    }
+  } catch {
+    icon = sourceIcon
+  }
 
   const lines = [
     "$ErrorActionPreference = 'Stop'",
