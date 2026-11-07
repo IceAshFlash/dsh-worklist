@@ -51,11 +51,11 @@ window.__ModuleLoader__.load({
     '.wl-caret{font-size:9px;line-height:1;opacity:.7}',
     '.wl-ver{padding:0 12px 10px;font-size:10px;line-height:1;color:var(--dsw-alias-label-tertiary,#8b929c);user-select:text}',
     // 专注小窗：Document PiP 窗口里是一整页，独立窗口里是一块浮层
-    '.wl-mini-doc{margin:0;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1c1f24);font-family:var(--dsw-font-family,-apple-system,"Segoe UI",system-ui,sans-serif);font-size:13px}',
+    '.wl-mini-doc{margin:0;overflow:hidden;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1c1f24);font-family:var(--dsw-font-family,-apple-system,"Segoe UI",system-ui,sans-serif);font-size:13px}',
     '.wl-icon.is-mini{flex:none}',
     '.wl-side-acts{display:flex;align-items:center;gap:2px;margin-left:auto;flex:none}',
     '.wl-icon.is-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}',
-    '.wl-mini{display:flex;flex-direction:column;height:100vh;box-sizing:border-box;padding:6px 10px 10px}',
+    '.wl-mini{display:flex;flex-direction:column;height:100vh;width:100%;box-sizing:border-box;padding:6px 10px 10px;overflow:hidden}',
     '.wl-mini-head{display:flex;align-items:center;gap:8px;padding:4px 0 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#e2e6eb);flex:none}',
     '.wl-mini-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-mini-titles{display:flex;flex-direction:column;min-width:0;gap:1px}',
@@ -465,6 +465,8 @@ window.__ModuleLoader__.load({
      * 效果差一档，但至少能用。
      */
     var mini = { categoryId: null, root: null, win: null, overlay: null, drag: null }
+    // 小窗默认尺寸：四个角都可拉伸，但初始就这么大
+    var MINI_SIZE = 256
 
     var findCategory = function (categoryId) {
       if (view.data === null) return null
@@ -675,7 +677,13 @@ window.__ModuleLoader__.load({
       view.expanded[category.id] = true
       var pip = window.documentPictureInPicture
       if (window.__wlMiniOverlay !== true && pip && typeof pip.requestWindow === 'function') {
-        Promise.resolve(pip.requestWindow({ width: 256, height: 256 })).then(function (win) {
+        Promise.resolve(pip.requestWindow({
+          width: MINI_SIZE,
+          height: MINI_SIZE,
+          // Chromium 默认会沿用上一次的窗口尺寸；这个开关让它改用这次请求的大小
+          preferInitialWindowPlacement: true,
+          disallowReturnToOpener: true,
+        })).then(function (win) {
           mini.win = win
           var pipDoc = win.document
           setDocTitle(pipDoc, '工作清单 · ' + category.title)
@@ -691,8 +699,9 @@ window.__ModuleLoader__.load({
           })
           renderMiniBody()
           render()
-          // 有的实现会沿用上次的窗口大小，再压一次
-          try { win.resizeTo(256, 256) } catch (error) { /* 不允许就直接算了 */ }
+          // 尺寸：requestWindow 的 width/height 只是「期望值」，不同 Chromium 版本行为不一，
+          // 有的会沿用上次窗口大小、有的会按内容撑开。多压几次，并把实际尺寸挂到标题上便于排查。
+          forceMiniSize(win)
           // 小窗钉在最上层之后，把主窗口收到任务栏（页面自己做不到，交给本地服务调 Win32）
           sendToBackground()
         }).catch(function () {
@@ -705,8 +714,35 @@ window.__ModuleLoader__.load({
       render()
     }
 
+    // 把 PiP 窗口压到 MINI_SIZE。resizeTo 在部分内核上对 PiP 窗口无效，
+    // 所以隔几个时间点各试一次；实在压不动就记下真实尺寸（标题上有，鼠标悬停能看到）。
+    var forceMiniSize = function (win) {
+      var tries = [0, 120, 400, 900, 1600]
+      tries.forEach(function (delay) {
+        setTimeout(function () {
+          try { win.resizeTo(MINI_SIZE, MINI_SIZE) } catch (error) { /* 不允许就直接算了 */ }
+          try {
+            if (mini.root !== null) {
+              mini.root.setAttribute('title', '小窗实际尺寸 ' + win.innerWidth + '×' + win.innerHeight)
+            }
+          } catch (error) { /* 跨文档读不到就算了 */ }
+        }, delay)
+      })
+    }
+
     // 让承载页面的主窗口最小化到任务栏。页面没这个权限，POST 给本地服务由它调 user32。
     // 独立窗口（127.0.0.1:<port> 标题）与 DSH 窗口都能匹配；失败就当没这回事。
+    var MINI_TITLE_PREFIX = '工作清单 · '
+    // Windows 上 PiP 小窗是从属窗口，主窗口一最小化它会被一起收走。
+    // 所以收完主窗口之后，按标题前缀再把它单独捞回来。
+    var rescueMiniWindow = function () {
+      var attempts = [120, 420, 900, 1600]
+      attempts.forEach(function (delay) {
+        setTimeout(function () {
+          request('POST', '/window/restore', { prefix: MINI_TITLE_PREFIX }).catch(function () { /* 没有就算了 */ })
+        }, delay)
+      })
+    }
     var sendToBackground = function () {
       if (typeof window === 'undefined' || window.location === undefined) return
       var host = String(window.location.host || '')
@@ -729,7 +765,9 @@ window.__ModuleLoader__.load({
             return next()
           }).catch(function () { return next() })
         }
-        next()
+        next().then(function () {
+          if (mini.win !== null) rescueMiniWindow()
+        })
       }, 350)
     }
 

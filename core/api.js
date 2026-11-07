@@ -511,13 +511,13 @@ $owner.Close()
 
   // 页面没有「最小化自己所在窗口」的权限，只能借 PowerShell 调 user32：
   // 枚举顶层窗口，标题里含 match 的（比如 127.0.0.1:7419）就 ShowWindow(SW_MINIMIZE)。
-  const minimizeByTitle = (match, exact, listMode) => new Promise((resolve, reject) => {
+  const minimizeByTitle = (match, exact, listMode, modeOverride) => new Promise((resolve, reject) => {
     if (process.platform !== 'win32') {
       reject(new ApiError(501, '这个能力只在 Windows 上有'))
       return
     }
     const stamp = `${process.pid}-${Date.now()}`
-    const script = "param([string]$NeedleB64, [string]$Mode, [string]$Out)\n$ErrorActionPreference = 'Stop'\n# 中文不能过命令行/控制台（PowerShell 5.1 用 GBK 写 stdout，Node 按 UTF-8 解会乱码；\n# 反方向传中文参数同样会被毁）—— 所以 needle 用 base64 进，结果写 UTF-8 文件出。\n$cs = @'\nusing System;\nusing System.Collections.Generic;\nusing System.Runtime.InteropServices;\nusing System.Text;\npublic static class WlWin {\n  public delegate bool EnumProc(IntPtr h, IntPtr l);\n  [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);\n  [DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);\n  [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h);\n  [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int cmd);\n  public static int Minimize(string needle, bool exact) {\n    var hits = new List<IntPtr>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length == 0) return true;\n      bool hit = exact ? string.Equals(t, needle, StringComparison.Ordinal) : t.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;\n      if (hit) hits.Add(h);\n      return true;\n    }, IntPtr.Zero);\n    int n = 0;\n    foreach (var h in hits) { if (ShowWindow(h, 6)) n++; }\n    return n;\n  }\n  public static string ListTitles() {\n    var lines = new List<string>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0) lines.Add(t);\n      return true;\n    }, IntPtr.Zero);\n    return string.Join(Environment.NewLine, lines);\n  }\n}\n'@\nAdd-Type -TypeDefinition $cs\n$needle = if ($NeedleB64) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($NeedleB64)) } else { '' }\n$result = if ($Mode -eq 'list') { [WlWin]::ListTitles() } else { 'OK ' + [WlWin]::Minimize($needle, ($Mode -eq 'exact')) }\n[System.IO.File]::WriteAllText($Out, $result, (New-Object System.Text.UTF8Encoding($false)))\n"
+    const script = "param([string]$NeedleB64, [string]$Mode, [string]$Out)\n$ErrorActionPreference = 'Stop'\n# 中文不能过命令行/控制台：PowerShell 5.1 用 GBK 写 stdout，Node 按 UTF-8 解会乱码；\n# 反过来把中文写进命令行参数同样会被毁。所以 needle 走 base64 进，结果写 UTF-8 文件出。\n$cs = @'\nusing System;\nusing System.Collections.Generic;\nusing System.Runtime.InteropServices;\nusing System.Text;\npublic static class WlWin {\n  public delegate bool EnumProc(IntPtr h, IntPtr l);\n  [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);\n  [DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);\n  [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h);\n  [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int cmd);\n  public static int Minimize(string needle, bool exact) {\n    var hits = new List<IntPtr>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length == 0) return true;\n      bool hit = exact ? string.Equals(t, needle, StringComparison.Ordinal) : t.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;\n      if (hit) hits.Add(h);\n      return true;\n    }, IntPtr.Zero);\n    int n = 0;\n    foreach (var h in hits) { if (ShowWindow(h, 6)) n++; }\n    return n;\n  }\n  // PiP 小窗是主窗口的从属窗口，主窗口一最小化它会被一起带走，所以收起来之后单独捞回来\n  public static int RestoreLike(string prefix) {\n    int n = 0;\n    EnumWindows((h, l) => {\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0 && t.StartsWith(prefix, StringComparison.Ordinal)) { ShowWindow(h, 9); n++; }\n      return true;\n    }, IntPtr.Zero);\n    return n;\n  }\n  public static string ListTitles() {\n    var lines = new List<string>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0) lines.Add(t);\n      return true;\n    }, IntPtr.Zero);\n    return string.Join(Environment.NewLine, lines);\n  }\n}\n'@\nAdd-Type -TypeDefinition $cs\n$needle = if ($NeedleB64) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($NeedleB64)) } else { '' }\nif ($Mode -eq 'list') { $result = [WlWin]::ListTitles() }\nelseif ($Mode -eq 'restore') { $result = 'OK ' + [WlWin]::RestoreLike($needle) }\nelse { $result = 'OK ' + [WlWin]::Minimize($needle, ($Mode -eq 'exact')) }\n[System.IO.File]::WriteAllText($Out, $result, (New-Object System.Text.UTF8Encoding($false)))\n"
     let scriptFile = null
     try {
       scriptFile = writeTempScript(`wl-min-${stamp}.ps1`, `\uFEFF${script}`)
@@ -535,7 +535,7 @@ $owner.Close()
       [
         '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptFile,
         Buffer.from(String(match), 'utf8').toString('base64'),
-        listMode === true ? 'list' : (exact ? 'exact' : 'contains'),
+        listMode === true ? 'list' : (modeOverride === 'restore' ? 'restore' : (exact ? 'exact' : 'contains')),
         outFile,
       ],
       { windowsHide: true },
@@ -595,6 +595,12 @@ $owner.Close()
       if (match === '') throw bad('要给一个用来认窗口的标题片段')
       const result = await minimizeByTitle(match, exact)
       return { status: 200, body: { ok: true, minimized: result.count, match, exact, detail: result.detail } }
+    }],
+    ['POST', /^\/window\/restore$/, async ({ body }) => {
+      const prefix = text(body.prefix).slice(0, 120)
+      if (prefix === '') throw bad('要给一个标题前缀')
+      const result = await minimizeByTitle(prefix, false, false, 'restore')
+      return { status: 200, body: { ok: true, restored: result.count, prefix, detail: result.detail } }
     }],
     ['GET', /^\/window\/list$/, async () => {
       const result = await minimizeByTitle('', false, true)
