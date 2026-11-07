@@ -201,6 +201,26 @@ window.__ModuleLoader__.load({
     '.wl-spin{display:inline-block;width:11px;height:11px;border:2px solid var(--dsw-alias-border-l2,#c9ced6);border-top-color:var(--wl-accent);border-radius:50%;animation:wl-spin .7s linear infinite}',
     '@keyframes wl-spin{to{transform:rotate(360deg)}}',
     '.wl-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}',
+
+    /* ---- 外观（自定义主题）：所有可调项都落在 CSS 变量上，切主题不重建节点 ---- */
+    '.wl-root{--wl-radius:8px;--wl-side-w:232px;--wl-scale:1}',
+    '.wl-root{font-family:var(--wl-font,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif);font-size:calc(13px * var(--wl-scale,1))}',
+    '.wl-side{width:var(--wl-side-w,232px);flex:0 0 var(--wl-side-w,232px)}',
+    '.wl-btn,.wl-input,.wl-select,.wl-textarea,.wl-chip,.wl-proj,.wl-cat,.wl-task,.wl-mini{border-radius:var(--wl-radius,8px)}',
+    '.wl-win{border-radius:calc(var(--wl-radius,8px) + 4px)}',
+    '.wl-root[data-wl-theme="light"]{--dsw-alias-bg-base:#fff;--dsw-alias-bg-layer-1:#f7f8fa;--dsw-alias-bg-layer-2:#eef1f5;--dsw-alias-bg-overlay:#fff;--dsw-alias-border-l1:#e6e8eb;--dsw-alias-border-l2:#d3d8df;--dsw-alias-label-primary:#1c1f24;--dsw-alias-label-secondary:#5b6470;--dsw-alias-label-tertiary:#8b929c;--dsw-alias-interactive-bg-hover:#eef1f5;--dsw-alias-interactive-bg-pressed:#e3e7ee;--dsw-alias-specific-sidebar-fill:#f7f8fa;color-scheme:light}',
+    '.wl-root[data-wl-theme="dark"]{--dsw-alias-bg-base:#16181d;--dsw-alias-bg-layer-1:#1b1e24;--dsw-alias-bg-layer-2:#23272f;--dsw-alias-bg-overlay:#1e222a;--dsw-alias-border-l1:#2c313a;--dsw-alias-border-l2:#3a414c;--dsw-alias-label-primary:#e8eaee;--dsw-alias-label-secondary:#a7aeba;--dsw-alias-label-tertiary:#7b8391;--dsw-alias-interactive-bg-hover:#262b34;--dsw-alias-interactive-bg-pressed:#2f353f;--dsw-alias-specific-sidebar-fill:#1b1e24;color-scheme:dark}',
+    '.wl-root.is-compact .wl-task,.wl-root.is-compact .wl-mini-row{padding-top:2px;padding-bottom:2px}',
+    '.wl-root.is-compact .wl-cat-head,.wl-root.is-compact .wl-side-head{padding-top:5px;padding-bottom:5px}',
+    '.wl-root.is-compact .wl-proj{padding-top:5px;padding-bottom:5px}',
+    '.wl-root.is-flat .wl-dot{display:none}',
+    '.wl-root.no-bar .wl-bar{display:none}',
+    '.wl-swatch{width:24px;height:24px;padding:0;border:2px solid transparent;border-radius:50%;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}',
+    '.wl-swatch.is-on{border-color:var(--dsw-alias-label-primary,#1c1f24);box-shadow:inset 0 0 0 2px var(--dsw-alias-bg-overlay,#fff)}',
+    '.wl-swatch.is-picker{background:conic-gradient(#f55,#fd5,#5f5,#5ff,#55f,#f5f,#f55);overflow:hidden}',
+    '.wl-swatch.is-picker::-webkit-color-swatch-wrapper{padding:0}',
+    '.wl-swatch.is-picker::-webkit-color-swatch{border:none;opacity:.55}',
+    '.wl-range{width:100%;height:18px;accent-color:var(--wl-accent);cursor:pointer}',
   ].join('\n')
 
   var ensureStyle = function (doc) {
@@ -317,6 +337,7 @@ window.__ModuleLoader__.load({
       dataFile: '',
       archiveMode: 'hide',
       version: '',
+      ui: null,
     }
     var mounted = true
     var mask = null
@@ -345,6 +366,270 @@ window.__ModuleLoader__.load({
       view.archiveMode = mode
       try { localStorage.setItem(ARCHIVE_KEY, mode) } catch (error) { /* 忽略 */ }
       render()
+    }
+
+    /* ---------------- 外观（自定义主题） ---------------- */
+
+    // 与 core/store.js 的 DEFAULT_UI 同源；独立窗口还没拉到数据时先用它垫底。
+    var UI_FALLBACK = {
+      theme: 'auto',
+      accent: '#3f6be6',
+      danger: '#e5484d',
+      fontFamily: '',
+      fontScale: 1,
+      radius: 8,
+      sidebarWidth: 232,
+      density: 'cozy',
+      showDots: true,
+      showProgressBar: true,
+      labels: { appName: '工作清单', projects: '项目', ddl: 'DDL预警', newTask: '新建工作' },
+    }
+
+    var FONT_CHOICES = [
+      { label: '跟随 DSH', value: '' },
+      { label: '系统默认', value: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
+      { label: '微软雅黑', value: '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif' },
+      { label: '等宽', value: '"Cascadia Code", Consolas, monospace' },
+      { label: '宋体', value: 'SimSun, "Songti SC", serif' },
+    ]
+
+    var ACCENT_CHOICES = ['#3f6be6', '#2f9e6f', '#e08a3c', '#c85c8e', '#8b6fd6', '#e5484d', '#3d9dc4', '#6e7a8a']
+
+    var uiOf = function () {
+      var ui = view.ui
+      if (ui === null || typeof ui !== 'object') return UI_FALLBACK
+      return ui
+    }
+
+    var labelOf = function (key) {
+      var labels = uiOf().labels || {}
+      var value = labels[key]
+      if (typeof value === 'string' && value.trim() !== '') return value
+      return UI_FALLBACK.labels[key]
+    }
+
+    // 强调色的 hover 态：同一个色相压暗一点，省得让用户填两个颜色。
+    var darken = function (hex, factor) {
+      var digits = String(hex).replace('#', '')
+      if (!/^[0-9a-fA-F]{6}$/.test(digits)) return hex
+      var parts = [0, 2, 4].map(function (index) {
+        var value = Math.round(parseInt(digits.slice(index, index + 2), 16) * factor)
+        return Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')
+      })
+      return '#' + parts.join('')
+    }
+
+    var applyUi = function () {
+      var ui = uiOf()
+      var style = root.style
+      style.setProperty('--wl-accent', ui.accent)
+      style.setProperty('--wl-accent-hover', darken(ui.accent, 0.85))
+      style.setProperty('--wl-danger', ui.danger)
+      style.setProperty('--wl-radius', ui.radius + 'px')
+      style.setProperty('--wl-side-w', ui.sidebarWidth + 'px')
+      style.setProperty('--wl-scale', String(ui.fontScale))
+      if (ui.fontFamily !== '') style.setProperty('--wl-font', ui.fontFamily)
+      else style.removeProperty('--wl-font')
+      root.classList.toggle('is-compact', ui.density === 'compact')
+      root.classList.toggle('is-flat', ui.showDots === false)
+      root.classList.toggle('no-bar', ui.showProgressBar === false)
+      // auto 时不挂属性，直接吃宿主当前主题的 token
+      if (ui.theme === 'light' || ui.theme === 'dark') root.setAttribute('data-wl-theme', ui.theme)
+      else root.removeAttribute('data-wl-theme')
+      // 独立窗口只有一个面板，窗口标题跟着应用名走；DSH 里不动宿主页面标题
+      if (typeof window !== 'undefined' && window.__wlStandalone === true && doc.title !== labelOf('appName')) {
+        doc.title = labelOf('appName')
+      }
+      // 小窗（PiP 文档 / 浮层 / 单窗口）是另一份文档或另一棵子树，主题变量得单独刷一遍
+      if (mini.root !== null) miniRestyle()
+    }
+
+    var uiSaveTimer = null
+    var uiPending = {}
+
+    /*
+     * 外观改动先本地生效（即时预览），350ms 内不再动才落盘 ——
+     * 拖滑杆时不会把每个中间值都写一遍 JSON。
+     */
+    var setUi = function (patch) {
+      var next = {}
+      Object.keys(uiOf()).forEach(function (key) { next[key] = uiOf()[key] })
+      Object.keys(patch).forEach(function (key) {
+        if (key === 'labels') next.labels = Object.assign({}, next.labels, patch.labels)
+        else next[key] = patch[key]
+      })
+      view.ui = next
+      uiPending = Object.assign({}, uiPending, patch)
+      applyUi()
+      if (uiSaveTimer !== null) clearTimeout(uiSaveTimer)
+      uiSaveTimer = setTimeout(function () {
+        var body = uiPending
+        uiPending = {}
+        uiSaveTimer = null
+        request('PATCH', '/ui', body).then(function (payload) {
+          if (!mounted) return
+          view.ui = payload.ui
+          applyUi()
+        }).catch(function (error) { notifyError(error) })
+      }, 350)
+    }
+
+    var openAppearanceModal = function () {
+      var body = h('div', { class: 'wl-win-body' })
+
+      var section = function (title, children) {
+        return h('div', { class: 'wl-field' }, h('div', { class: 'wl-label', text: title }), h('div', { class: 'wl-chips', style: { gap: '8px' } }, children))
+      }
+
+      var chipButton = function (text, active, onclick) {
+        return h('button', {
+          class: 'wl-btn' + (active ? ' is-primary' : ''),
+          onclick: onclick,
+        }, text)
+      }
+
+      var slider = function (label, options) {
+        var toValue = typeof options.toValue === 'function' ? options.toValue : function (value) { return value }
+        var format = typeof options.format === 'function' ? options.format : function (value) { return String(value) }
+        var current = toValue(uiOf()[options.key])
+        var value = h('span', { class: 'wl-hint', style: { minWidth: '46px', textAlign: 'right' }, text: format(current) })
+        var input = h('input', {
+          class: 'wl-range',
+          type: 'range',
+          min: String(options.min),
+          max: String(options.max),
+          step: String(options.step || 1),
+          value: String(current),
+          oninput: function (event) {
+            var raw = toValue(Number(event.target.value))
+            value.textContent = format(raw)
+            setUi((function () { var patch = {}; patch[options.key] = raw; return patch })())
+          },
+        })
+        return h('div', { class: 'wl-field', style: { flex: '1 1 0' } },
+          h('div', { class: 'wl-row' },
+            h('span', { class: 'wl-label', text: label }),
+            h('span', { class: 'wl-grow', style: { flex: '1 1 auto' } }),
+            value
+          ),
+          input
+        )
+      }
+
+      var rebuild = function () {
+        body.textContent = ''
+        var ui = uiOf()
+
+        // 主题
+        body.appendChild(section('主题', ['auto', 'light', 'dark'].map(function (mode) {
+          var names = { auto: '跟随宿主', light: '亮色', dark: '暗色' }
+          return chipButton(names[mode], ui.theme === mode, function () { setUi({ theme: mode }); rebuild() })
+        })))
+
+        // 强调色
+        var swatches = ACCENT_CHOICES.map(function (color) {
+          return h('button', {
+            class: 'wl-swatch' + (String(ui.accent).toLowerCase() === color ? ' is-on' : ''),
+            title: color,
+            style: { background: color },
+            onclick: function () { setUi({ accent: color }); rebuild() },
+          })
+        })
+        swatches.push(h('input', {
+          type: 'color',
+          class: 'wl-swatch is-picker',
+          value: /^#[0-9a-fA-F]{6}$/.test(ui.accent) ? ui.accent : '#3f6be6',
+          title: '自定义颜色',
+          oninput: function (event) { setUi({ accent: event.target.value }) },
+          onchange: function () { rebuild() },
+        }))
+        body.appendChild(section('强调色', swatches))
+
+        // 字体
+        var fontSelect = h('select', {
+          class: 'wl-select',
+          onchange: function (event) { setUi({ fontFamily: event.target.value }) },
+        }, FONT_CHOICES.map(function (choice) {
+          return h('option', { value: choice.value, selected: (ui.fontFamily || '') === choice.value }, choice.label)
+        }))
+        body.appendChild(h('div', { class: 'wl-field' }, h('div', { class: 'wl-label', text: '字体' }), fontSelect))
+
+        // 字号 / 圆角 / 侧栏宽度
+        body.appendChild(h('div', { class: 'wl-row', style: { gap: '16px' } },
+          slider('字号', { key: 'fontScale', min: 85, max: 130, toValue: function (value) { return Math.round(value * 100) }, format: function (value) { return value + '%' } }),
+          slider('圆角', { key: 'radius', min: 0, max: 18, format: function (value) { return value + 'px' } })
+        ))
+        body.appendChild(h('div', { class: 'wl-row', style: { gap: '16px' } },
+          slider('侧栏宽度', { key: 'sidebarWidth', min: 180, max: 380, step: 2, format: function (value) { return value + 'px' } })
+        ))
+
+        // 开关
+        // 开关：density 存的是 cozy/compact，其余存布尔，所以由调用方给出「下一个值」
+        var toggle = function (label, key, current, nextValue) {
+          return h('button', {
+            class: 'wl-btn' + (current ? ' is-primary' : ''),
+            onclick: function () { var patch = {}; patch[key] = nextValue; setUi(patch); rebuild() },
+          }, (current ? '✓ ' : '') + label)
+        }
+        body.appendChild(section('显示', [
+          toggle('紧凑行距', 'density', ui.density === 'compact', ui.density === 'compact' ? 'cozy' : 'compact'),
+          toggle('分类色点', 'showDots', ui.showDots !== false, ui.showDots === false),
+          toggle('进度条', 'showProgressBar', ui.showProgressBar !== false, ui.showProgressBar === false),
+        ]))
+
+        // 标签文案
+        var labelRow = function (key, text) {
+          return h('div', { class: 'wl-field', style: { flex: '1 1 140px' } },
+            h('div', { class: 'wl-label', text: text }),
+            h('input', {
+              class: 'wl-input',
+              value: labelOf(key),
+              maxlength: '24',
+              oninput: function (event) {
+                var labels = {}
+                labels[key] = event.target.value
+                setUi({ labels: labels })
+              },
+            })
+          )
+        }
+        body.appendChild(h('div', { class: 'wl-label', text: '标签文案（留空用默认值）' }))
+        body.appendChild(h('div', { class: 'wl-row', style: { flexWrap: 'wrap', gap: '8px' } },
+          labelRow('appName', '应用名'),
+          labelRow('projects', '项目'),
+          labelRow('ddl', 'DDL预警'),
+          labelRow('newTask', '新建工作')
+        ))
+
+        body.appendChild(h('div', { class: 'wl-hint', text: '改动即时生效，并保存在同一份数据文件里（DSH 面板和桌面窗口共用）。' }))
+      }
+
+      rebuild()
+
+      var reset = h('button', {
+        class: 'wl-btn',
+        onclick: function () {
+          request('POST', '/ui/reset').then(function (payload) {
+            view.ui = payload.ui
+            applyUi()
+            rebuild()
+          }).catch(function (error) { notifyError(error) })
+        },
+      }, '恢复默认')
+
+      openMask(h('div', { class: 'wl-win', style: { width: 'min(620px,100%)' } },
+        h('div', { class: 'wl-win-head' },
+          h('span', { text: '外观' }),
+          h('span', { class: 'wl-grow' }),
+          h('button', { class: 'wl-icon', title: '关闭', onclick: closeModal }, '×')
+        ),
+        body,
+        h('div', { class: 'wl-win-foot' },
+          reset,
+          h('span', { class: 'wl-grow' }),
+          h('button', { class: 'wl-btn is-primary', onclick: closeModal }, '完成')
+        )
+      ))
     }
 
     var setArchived = function (collection, id, archived) {
@@ -377,6 +662,8 @@ window.__ModuleLoader__.load({
 
     var applyState = function (state) {
       view.data = state
+      // 外观配置跟数据走：同一份 JSON，DSH 面板和桌面窗口看到的是同一个主题
+      if (state && state.ui && typeof state.ui === 'object') view.ui = state.ui
       view.error = null
       view.loading = false
       var exists = view.data.projects.some(function (p) { return p.id === view.selectedProjectId && visibleArchived(p) })
@@ -432,6 +719,7 @@ window.__ModuleLoader__.load({
       if (mini.categoryId !== null) {
         root.textContent = ''
         root.className = 'wl-root'
+      applyUi()
         if (mini.single === true) {
           // 单窗口模式：整个面板就是专注视图，外面那个窗口本身已经被缩成小窗了
           var only = h('div', { class: 'wl-mini is-single' })
@@ -451,6 +739,7 @@ window.__ModuleLoader__.load({
       if (scroller !== null) scrollTop = scroller.scrollTop
       root.textContent = ''
       root.className = 'wl-root'
+      applyUi()
 
       var project = null
       if (view.data !== null && view.selectedProjectId !== null) {
@@ -508,6 +797,20 @@ window.__ModuleLoader__.load({
         if (value !== '') doc.body.style.setProperty(name, value.trim())
       })
       doc.body.style.setProperty('background-color', computed.getPropertyValue('--dsw-alias-bg-base').trim() || '#fff')
+    }
+
+    // 外观改动后同步到小窗：PiP 换一份文档、浮层/单窗口换一棵子树，两条路分别处理
+    var miniRestyle = function () {
+      if (mini.root === null) return
+      if (mini.win !== null && mini.win.document !== undefined && mini.win.document.body !== undefined) {
+        copyThemeVars(mini.win.document, root)
+      }
+      var ui = uiOf()
+      mini.root.style.setProperty('--wl-accent', ui.accent)
+      mini.root.style.setProperty('--wl-danger', ui.danger)
+      mini.root.style.setProperty('--wl-radius', ui.radius + 'px')
+      mini.root.style.setProperty('--wl-scale', String(ui.fontScale))
+      mini.root.classList.toggle('is-compact', ui.density === 'compact')
     }
 
     var miniStepRow = function (realId, step) {
@@ -705,9 +1008,9 @@ window.__ModuleLoader__.load({
         })).then(function (win) {
           mini.win = win
           var pipDoc = win.document
-          setDocTitle(pipDoc, '工作清单 · ' + category.title)
+          setDocTitle(pipDoc, labelOf('appName') + ' · ' + category.title)
           ensureStyle(pipDoc)
-          setDocTitle(pipDoc, '工作清单 · ' + category.title)
+          setDocTitle(pipDoc, labelOf('appName') + ' · ' + category.title)
           copyThemeVars(pipDoc, root)
           pipDoc.body.className = 'wl-mini-doc'
           mini.root = pipDoc.createElement('div')
@@ -844,6 +1147,13 @@ window.__ModuleLoader__.load({
           h('button', {
             class: 'wl-icon',
             type: 'button',
+            title: '外观：主题、颜色、字体、侧栏宽度、标签文案',
+            'aria-label': '外观',
+            onclick: function () { openAppearanceModal() },
+          }, iconPalette(16)),
+          h('button', {
+            class: 'wl-icon',
+            type: 'button',
             title: '视图选项：归档显示方式',
             'aria-label': '视图选项',
             'aria-haspopup': 'menu',
@@ -892,7 +1202,7 @@ window.__ModuleLoader__.load({
       })
       side.appendChild(list)
       // 版本标记：用来一眼确认面板跑的是不是刚装上的那一版（排查缓存时特别有用）
-      side.appendChild(h('div', { class: 'wl-ver', text: view.version ? 'v' + view.version : '' }))
+      side.appendChild(h('div', { class: 'wl-ver', text: (labelOf('appName') || '工作清单') + (view.version ? ' · v' + view.version : '') }))
       return side
     }
 
@@ -1085,7 +1395,7 @@ window.__ModuleLoader__.load({
         }, open ? '▾' : '▸'),
         h('span', { class: 'wl-dot', style: { background: category.color } }),
         !isDdl && category.pinned ? h('span', { class: 'wl-pin', title: '已置顶', text: '📌' }) : null,
-        h('span', { class: 'wl-cat-name', text: category.title, title: isDdl ? '自动收录撞上预警线的工作，不能改名或删除' : category.title }),
+        h('span', { class: 'wl-cat-name', text: isDdl ? labelOf('ddl') : category.title, title: isDdl ? '自动收录撞上预警线的工作，不能改名或删除' : category.title }),
         isDdl ? h('span', { class: 'wl-cat-hint', text: '自动收录' }) : null,
         !isDdl && category.archived === true ? h('span', { class: 'wl-chip is-arch', text: '已归档' }) : null,
         bar(category.progress, '64px'),
@@ -1303,6 +1613,16 @@ window.__ModuleLoader__.load({
         svgEl('path', { d: 'M9 6v7.6' }),
         svgEl('circle', { cx: 3.6, cy: 4.2, r: 0.55 }),
       ])
+    }
+
+    // 调色盘：外观按钮（一个圆盘 + 三个点）
+    var iconPalette = function (size) {
+      return svgIcon([
+        svgEl('path', { d: 'M8 1.9a6.1 6.1 0 1 0 0 12.2c.9 0 1.4-.6 1.4-1.3 0-.5-.2-.8-.5-1.1-.2-.3-.4-.5-.4-.9 0-.6.5-1 1.1-1h1.2A3.3 3.3 0 0 0 14.1 6.5c0-2.6-2.7-4.6-6.1-4.6Z' }),
+        svgEl('circle', { cx: 5.2, cy: 6.1, r: 0.85 }),
+        svgEl('circle', { cx: 8.1, cy: 4.5, r: 0.85 }),
+        svgEl('circle', { cx: 10.9, cy: 6, r: 0.85 }),
+      ], size)
     }
 
     // IconSlidersTwoOutlineRegular —— DSH「视图选项」用的就是它（两条滑杆 + 两个旋钮）
@@ -1614,7 +1934,7 @@ window.__ModuleLoader__.load({
       openMenu(event, [
         { label: category.pinned ? '取消置顶' : '置顶分类', run: function () { setPinned('categories', category.id, !category.pinned) } },
         '-',
-        { label: '新建工作…', run: function () { openTaskModal(null, category) } },
+        { label: labelOf('newTask') + '…', run: function () { openTaskModal(null, category) } },
         { label: '重命名分类…', run: function () { openCategoryModal(project, category) } },
         project.path === '' ? null : {
           label: '打开分类文件夹',
@@ -2115,7 +2435,7 @@ window.__ModuleLoader__.load({
 
       var win = h('div', { class: 'wl-win' },
         h('div', { class: 'wl-win-head' },
-          h('span', { text: isEdit ? '编辑工作' : '新建工作' }),
+          h('span', { text: isEdit ? '编辑工作' : labelOf('newTask') }),
           h('span', { class: 'wl-grow' }),
           h('button', { class: 'wl-icon', title: '关闭', onclick: closeModal }, '×')
         ),

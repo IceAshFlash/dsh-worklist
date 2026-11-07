@@ -26,6 +26,7 @@ import {
   newId,
   read,
   resolveDataFile,
+  sanitizeUi,
   taskWarnHours,
   toTimestamp,
   toWeight,
@@ -414,7 +415,7 @@ export function apply(ctx) {
     parameters: {
       action: {
         type: 'string',
-        enum: ['overview', 'add_project', 'add_category', 'add_task', 'set_steps', 'update_task'],
+        enum: ['overview', 'add_project', 'add_category', 'add_task', 'set_steps', 'update_task', 'set_ui'],
         description: 'overview = read the whole board; the rest are writes.',
       },
       projectTitle: { type: 'string', description: 'Project name (also used to disambiguate a category).' },
@@ -438,6 +439,10 @@ export function apply(ctx) {
         type: 'array',
         items: { type: 'object' },
         description: 'Steps as [{ title, weight }]; replaces the whole step list for set_steps.',
+      },
+      ui: {
+        type: 'object',
+        description: 'Appearance patch for set_ui: { theme?: "auto"|"light"|"dark", accent?: "#rrggbb", danger?: "#rrggbb", fontFamily?: string, fontScale?: number (0.85-1.3), radius?: number (0-18), sidebarWidth?: number (180-380), density?: "cozy"|"compact", showDots?: boolean, showProgressBar?: boolean, labels?: { appName?, projects?, ddl?, newTask? } }. A null field resets it to the default.',
       },
     },
     output: {
@@ -588,6 +593,21 @@ export function apply(ctx) {
         } catch (error) {
           return { text: String(error.message ?? error) }
         }
+      }
+
+      if (action === 'set_ui') {
+        const patch = body.ui !== null && typeof body.ui === 'object' ? body.ui : {}
+        if (Object.keys(patch).length === 0) return { text: 'set_ui 需要 ui 对象，例如 {"ui":{"theme":"dark","accent":"#2f9e6f"}}。' }
+        const ui = await mutate(file, (state) => {
+          const next = { ...state.ui, ...patch }
+          if (patch.labels !== undefined) next.labels = { ...state.ui.labels, ...(patch.labels ?? {}) }
+          for (const key of Object.keys(patch)) {
+            if (patch[key] === null) delete next[key]
+          }
+          state.ui = sanitizeUi(next)
+          return state.ui
+        })
+        return { text: `外观已更新：主题 ${ui.theme}、强调色 ${ui.accent}、字号 ${Math.round(ui.fontScale * 100)}%、侧栏 ${ui.sidebarWidth}px、标签 ${JSON.stringify(ui.labels)}。` }
       }
 
       return { text: `未知 action：${action}` }

@@ -76,6 +76,19 @@ try {
   const empty = await call('GET', '/state')
   check('空状态可用', empty.status === 200 && Array.isArray(empty.payload.state.projects), `projects=${empty.payload.state.projects?.length}`)
 
+  // 外观配置：默认值 → 局部改 → 非法值被夹住 → 标签深合并 → 恢复默认
+  const uiDefault = await call('GET', '/ui')
+  check('外观有默认值', uiDefault.status === 200 && uiDefault.payload.ui?.accent === '#3f6be6' && uiDefault.payload.ui?.labels?.projects === '项目')
+  const uiPatched = await call('PATCH', '/ui', { theme: 'dark', accent: '#2f9e6f', labels: { appName: '我的板' } })
+  check('改主题与强调色', uiPatched.payload.ui?.theme === 'dark' && uiPatched.payload.ui?.accent === '#2f9e6f')
+  check('标签深合并', uiPatched.payload.ui?.labels?.appName === '我的板' && uiPatched.payload.ui?.labels?.projects === '项目')
+  // 非法色值会被打回默认色（不是保留上一次），数值越界则夹到边界
+  const uiClamped = await call('PATCH', '/ui', { fontScale: 9, radius: -5, sidebarWidth: 9999, accent: 'red' })
+  check('非法外观值被夹住', uiClamped.payload.ui?.fontScale === 1.3 && uiClamped.payload.ui?.radius === 0 &&
+    uiClamped.payload.ui?.sidebarWidth === 380 && uiClamped.payload.ui?.accent === '#3f6be6', JSON.stringify(uiClamped.payload.ui))
+  const uiReset = await call('POST', '/ui/reset')
+  check('恢复默认外观', uiReset.payload.ui?.theme === 'auto' && uiReset.payload.ui?.labels?.appName === '工作清单')
+
   fs.mkdirSync(FS_ROOT, { recursive: true })
   const project = await call('POST', '/projects', { title: '冒烟项目', path: FS_ROOT })
   check('建项目', project.status === 201, `id=${project.payload.project?.id}`)

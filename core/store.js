@@ -73,12 +73,15 @@ export const emptyState = () => ({
   version: SCHEMA_VERSION,
   updatedAt: 0,
   seq: 0,
+  ui: { ...DEFAULT_UI, labels: { ...DEFAULT_UI.labels } },
   projects: [],
   categories: [],
   tasks: [],
 })
 
 const str = (value, fallback = '') => (typeof value === 'string' ? value : fallback)
+
+const clamp = (value, min, max) => (value < min ? min : value > max ? max : value)
 
 const toNumber = (value, fallback) => {
   if (value === null || value === undefined || value === '') return fallback
@@ -480,6 +483,7 @@ export const sanitizeState = (raw) => {
     version: SCHEMA_VERSION,
     updatedAt: toNumber(state.updatedAt, 0),
     seq: toNumber(state.seq, 0),
+    ui: sanitizeUi(state.ui),
     projects,
     categories,
     tasks,
@@ -500,6 +504,61 @@ export const saveState = (file, state) => {
   const tmp = `${file}.${process.pid}.tmp`
   fs.writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8')
   fs.renameSync(tmp, file)
+}
+
+/**
+ * 外观配置的默认值。整份随数据文件一起存，所以 DSH 面板和独立窗口看到的是同一套。
+ * 全部可覆盖，界面上的「恢复默认」就是把它原样写回去。
+ */
+export const DEFAULT_UI = {
+  theme: 'auto', // auto=跟随 DSH / light / dark
+  accent: '#3f6be6',
+  danger: '#e5484d',
+  fontFamily: '', // 空 = 用内置字体栈
+  fontScale: 1, // 0.85 – 1.3
+  radius: 8, // 0 – 18
+  sidebarWidth: 232, // 180 – 380
+  density: 'cozy', // cozy | compact
+  showDots: true, // 分类名前的色点
+  showProgressBar: true, // 项目行下的小进度条
+  labels: {
+    appName: '工作清单',
+    projects: '项目',
+    ddl: 'DDL预警',
+    newTask: '新建工作',
+  },
+}
+
+const HEX = /^#[0-9a-fA-F]{6}$/
+const LABEL_MAX = 24
+
+const textLabel = (value, fallback) => {
+  const clean = str(value).replace(/[\r\n\t]/g, ' ').trim().slice(0, LABEL_MAX)
+  return clean || fallback
+}
+
+export const sanitizeUi = (raw) => {
+  const ui = raw !== null && typeof raw === 'object' ? raw : {}
+  const labels = ui.labels !== null && typeof ui.labels === 'object' ? ui.labels : {}
+  const theme = ['auto', 'light', 'dark'].includes(str(ui.theme)) ? str(ui.theme) : DEFAULT_UI.theme
+  return {
+    theme,
+    accent: HEX.test(str(ui.accent)) ? str(ui.accent).toLowerCase() : DEFAULT_UI.accent,
+    danger: HEX.test(str(ui.danger)) ? str(ui.danger).toLowerCase() : DEFAULT_UI.danger,
+    fontFamily: str(ui.fontFamily).replace(/[;{}<>]/g, '').trim().slice(0, 120),
+    fontScale: clamp(toNumber(ui.fontScale, DEFAULT_UI.fontScale), 0.85, 1.3),
+    radius: Math.round(clamp(toNumber(ui.radius, DEFAULT_UI.radius), 0, 18)),
+    sidebarWidth: Math.round(clamp(toNumber(ui.sidebarWidth, DEFAULT_UI.sidebarWidth), 180, 380)),
+    density: str(ui.density) === 'compact' ? 'compact' : 'cozy',
+    showDots: ui.showDots !== false,
+    showProgressBar: ui.showProgressBar !== false,
+    labels: {
+      appName: textLabel(labels.appName, DEFAULT_UI.labels.appName),
+      projects: textLabel(labels.projects, DEFAULT_UI.labels.projects),
+      ddl: textLabel(labels.ddl, DEFAULT_UI.labels.ddl),
+      newTask: textLabel(labels.newTask, DEFAULT_UI.labels.newTask),
+    },
+  }
 }
 
 /* 同一个进程里串行化写入；跨进程靠"每次写都重读文件"。 */

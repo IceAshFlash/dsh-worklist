@@ -14,6 +14,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 
 import {
+  DEFAULT_UI,
   PALETTE,
   buildProjectCategories,
   clampWarnHours,
@@ -21,6 +22,7 @@ import {
   mutate,
   newId,
   read,
+  sanitizeUi,
   taskWarnHours,
   toTimestamp,
   toWeight,
@@ -669,6 +671,31 @@ $owner.Close()
       return { status: 200, body: { ok: true, titles: result.titles } }
     }],
     ['GET', /^\/state$/, async () => ({ status: 200, body: { ok: true, state: await snapshot() } })],
+    // 外观配置：整体读、局部改。没传的字段保持原样，传 null 重置该字段。
+    ['GET', /^\/ui$/, async () => {
+      const state = await read(file)
+      return { status: 200, body: { ok: true, ui: state.ui, defaults: DEFAULT_UI } }
+    }],
+    ['PATCH', /^\/ui$/, async ({ body }) => {
+      const patch = body !== null && typeof body === 'object' ? body : {}
+      const ui = await mutate(file, (state) => {
+        const next = { ...state.ui, ...patch }
+        if (patch.labels !== undefined) next.labels = { ...state.ui.labels, ...(patch.labels ?? {}) }
+        for (const key of Object.keys(patch)) {
+          if (patch[key] === null) delete next[key]
+        }
+        state.ui = sanitizeUi(next)
+        return state.ui
+      })
+      return { status: 200, body: { ok: true, ui } }
+    }],
+    ['POST', /^\/ui\/reset$/, async () => {
+      const ui = await mutate(file, (state) => {
+        state.ui = sanitizeUi(null)
+        return state.ui
+      })
+      return { status: 200, body: { ok: true, ui } }
+    }],
     ['GET', /^\/meta$/, async () => ({
       status: 200,
       body: {

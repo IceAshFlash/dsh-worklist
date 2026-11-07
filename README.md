@@ -300,6 +300,42 @@ curl -X DELETE "http://127.0.0.1:7419/api/projects/<id>?files=1"
 
 小窗的尺寸：`requestWindow({ width, height })` 在不同 Chromium 版本里只是「期望值」，有的会沿用上次窗口大小、有的按内容撑开，脚本的 `resizeTo` 也可能被忽略。这里传了 `preferInitialWindowPlacement: true` 并在 0/120/400/900/1600ms 各压一次 `resizeTo(256, 256)`；**把鼠标停在小窗上**，`title` 里会显示它实际的内尺寸，排查时用得上。
 
+## 外观（自定义主题）
+
+侧栏右上角那个调色盘图标就是入口。改完即时生效，350ms 后落盘；配置存在同一份 JSON 的
+`ui` 字段里，所以 **DSH 面板和桌面窗口看到的是同一个主题**，独立窗口启动时也会读它。
+
+| 项 | 范围 | 说明 |
+|---|---|---|
+| `theme` | `auto` / `light` / `dark` | auto = 跟随宿主当前主题；light/dark 由组件自己覆盖那套 `--dsw-alias-*` |
+| `accent` | `#rrggbb` | 强调色（勾选框、进度条填充、主按钮）。hover 态由它压暗 15% 算出来 |
+| `danger` | `#rrggbb` | 危险色（删除按钮、逾期、DDL 预警） |
+| `fontFamily` | 字符串，空 = 内置栈 | 面板里的字体 |
+| `fontScale` | 0.85 – 1.3 | 字号倍率，作用在 `.wl-root` 的 `font-size` |
+| `radius` | 0 – 18 | 圆角，按钮/输入框/卡片/菜单一起变 |
+| `sidebarWidth` | 180 – 380 | 侧栏宽度 |
+| `density` | `cozy` / `compact` | 紧凑模式收紧行高与内边距 |
+| `showDots` | 布尔 | 分类色点 |
+| `showProgressBar` | 布尔 | 进度条 |
+| `labels` | 四个字符串 | `appName` / `projects` / `ddl` / `newTask`，各自留空回默认 |
+
+非法值不是报错，是**夹到边界或回默认**：色值格式不对回默认色，数值越界夹到上下限，标签换行符会被去掉、超长截断到 24 字。
+
+也给了 Agent 一条通道，不用点界面也能改：
+
+```jsonc
+// worklist 工具：action = "set_ui"
+{ "ui": { "theme": "dark", "accent": "#2f9e6f", "labels": { "appName": "我的板" } } }
+```
+
+```bash
+curl -X PATCH http://127.0.0.1:<端口>/dsh-worklist-api/ui \
+  -H 'content-type: application/json' \
+  -d '{"accent":"#c85c8e","radius":12,"sidebarWidth":260}'
+```
+
+想整体复位：`POST /ui/reset`，或者面板里点「恢复默认」。
+
 ## 接口
 
 `core/api.js` 里的路由表，前缀由宿主给：
@@ -325,6 +361,9 @@ PUT    /tasks/:id/steps       { steps: [{ title, weight }] }
 POST   /ai-split              { title, note?, hint?, images?, projectTitle?, categoryTitle?, steps? }
 POST   /window/minimize       { match, exact? } 按标题最小化窗口（开小窗时把主窗口收到任务栏）
 GET    /window/list           列出本机可见窗口标题（调试用）
+GET    /ui                    读外观配置（同时返回 defaults）
+PATCH  /ui                    局部改外观：{ theme?, accent?, fontFamily?, fontScale?, radius?, sidebarWidth?, density?, showDots?, showProgressBar?, labels? }；labels 深合并，字段传 null 表示回默认
+POST   /ui/reset              外观全部回默认
 ```
 
 `/ai-split` 只在 DSH 里有实现（独立模式回 501）。它走 `subagents.startActivation`
