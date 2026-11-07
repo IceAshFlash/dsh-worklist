@@ -290,6 +290,10 @@ curl -X DELETE "http://127.0.0.1:7419/api/projects/<id>?files=1"
 
 小窗里的勾选走的是同一套接口（`PATCH /tasks/:id`、`PATCH /tasks/:id/steps/:stepId`），所以主面板、桌面窗口、Agent 工具看到的是同一份数据；小窗开着的时候主面板会显示一张「正在小窗里」的卡片，避免两处同时操作。
 
+小窗打开后，承载页面的主窗口会收到任务栏——页面自己没这个权限，所以走 `POST /window/minimize`，由本地服务用 Win32 的 `EnumWindows` + `ShowWindow(SW_MINIMIZE)` 找到标题匹配的窗口再收起来。标题依次尝试「页面标题完全相同 → 页面标题包含 → `host:port` → `DeepSeek`」，所以 DSH 的窗口（标题形如「<会话名> — DeepSeek Harness」）也能被收掉。想看看本机都有哪些窗口标题：`GET /window/list`。
+
+⚠️ 这两条路由里的中文**不能过命令行、也不能过标准输出**：Windows PowerShell 5.1 用 OEM(GBK) 写 stdout，Node 按 UTF-8 读回来就是乱码；反过来把中文写在命令行参数里传给 `powershell -File` 同样会被毁掉，窗口就永远匹配不上（表现为 `minimized: 0`、`detail` 为空）。所以 needle 用 base64 传进去，结果写 UTF-8 临时文件再由 Node 读——`core/api.js` 的 `minimizeByTitle` 就是这么做的。
+
 ## 接口
 
 `core/api.js` 里的路由表，前缀由宿主给：
@@ -312,7 +316,9 @@ POST   /tasks                 { categoryId, title, weight?, dueAt?, steps? }
 PATCH  /tasks/:id             done=true 时会级联勾选所有步骤
 DELETE /tasks/:id
 PUT    /tasks/:id/steps       { steps: [{ title, weight }] }
-POST   /ai-split              { title, note?, hint?, projectTitle?, categoryTitle?, steps? }
+POST   /ai-split              { title, note?, hint?, images?, projectTitle?, categoryTitle?, steps? }
+POST   /window/minimize       { match, exact? } 按标题最小化窗口（开小窗时把主窗口收到任务栏）
+GET    /window/list           列出本机可见窗口标题（调试用）
 ```
 
 `/ai-split` 只在 DSH 里有实现（独立模式回 501）。它走 `subagents.startActivation`

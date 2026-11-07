@@ -73,7 +73,7 @@ window.__ModuleLoader__.load({
     '.wl-mini-step{display:flex;align-items:center;gap:8px;padding:3px 4px;border-radius:5px;font-size:12px;color:var(--dsw-alias-label-secondary,#5b6470)}',
     '.wl-mini-step-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-mini-step.is-done .wl-mini-step-name{text-decoration:line-through;opacity:.65}',
-    '.wl-mini-overlay{position:fixed;z-index:9999;left:calc(50% - 150px);top:72px;width:300px;height:380px;min-width:240px;min-height:200px;display:flex;flex-direction:column;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);border-radius:10px;box-shadow:0 18px 48px rgba(15,23,42,.28);resize:both;overflow:hidden}',
+    '.wl-mini-overlay{position:fixed;z-index:9999;left:calc(50% - 128px);top:72px;width:256px;height:256px;min-width:220px;min-height:180px;display:flex;flex-direction:column;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);border-radius:10px;box-shadow:0 18px 48px rgba(15,23,42,.28);resize:both;overflow:hidden}',
     '.wl-mini-drag{display:flex;align-items:center;gap:7px;padding:0 6px 0 10px;height:30px;font-size:11px;color:var(--dsw-alias-label-secondary,#5b6470);background:var(--dsw-alias-bg-layer-2,#eef1f5);border-bottom:1px solid var(--dsw-alias-border-l1,#e2e6eb);cursor:move;user-select:none;flex:none}',
     '.wl-mini-drag-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-mini-x{width:20px;height:20px;font-size:11px;cursor:pointer}',
@@ -675,7 +675,7 @@ window.__ModuleLoader__.load({
       view.expanded[category.id] = true
       var pip = window.documentPictureInPicture
       if (window.__wlMiniOverlay !== true && pip && typeof pip.requestWindow === 'function') {
-        Promise.resolve(pip.requestWindow({ width: 300, height: 380 })).then(function (win) {
+        Promise.resolve(pip.requestWindow({ width: 256, height: 256 })).then(function (win) {
           mini.win = win
           var pipDoc = win.document
           setDocTitle(pipDoc, '工作清单 · ' + category.title)
@@ -691,6 +691,8 @@ window.__ModuleLoader__.load({
           })
           renderMiniBody()
           render()
+          // 有的实现会沿用上次的窗口大小，再压一次
+          try { win.resizeTo(256, 256) } catch (error) { /* 不允许就直接算了 */ }
           // 小窗钉在最上层之后，把主窗口收到任务栏（页面自己做不到，交给本地服务调 Win32）
           sendToBackground()
         }).catch(function () {
@@ -708,14 +710,26 @@ window.__ModuleLoader__.load({
     var sendToBackground = function () {
       if (typeof window === 'undefined' || window.location === undefined) return
       var host = String(window.location.host || '')
-      if (host === '') return
+      var title = String(doc.title || '')
+      // 依次尝试：页面标题完全相同 → 页面标题包含 → 端口/主机名包含 → 应用名
+      // 小窗（PiP）自己的标题是「工作清单 · 分类」，所以第一条只认完全相同，不会把它也收起来。
+      var tries = []
+      if (title !== '') tries.push({ match: title, exact: true })
+      if (title !== '') tries.push({ match: title })
+      if (host !== '') tries.push({ match: host })
+      tries.push({ match: 'DeepSeek' })
       setTimeout(function () {
-        request('POST', '/window/minimize', { match: host }).then(function (reply) {
-          if (reply !== null && reply.minimized > 0) return
-          // 独立窗口的标题是 127.0.0.1:<端口>；DSH 面板这边标题里没有端口，
-          // 退回按应用名找一次（找不到就算了，不打扰）。
-          return request('POST', '/window/minimize', { match: 'DeepSeek' })
-        }).catch(function () { /* 忽略 */ })
+        var index = 0
+        var next = function () {
+          if (index >= tries.length) return Promise.resolve()
+          var current = tries[index]
+          index += 1
+          return request('POST', '/window/minimize', current).then(function (reply) {
+            if (reply !== null && reply.minimized > 0) return null
+            return next()
+          }).catch(function () { return next() })
+        }
+        next()
       }, 350)
     }
 

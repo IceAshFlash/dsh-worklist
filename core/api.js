@@ -511,44 +511,13 @@ $owner.Close()
 
   // 页面没有「最小化自己所在窗口」的权限，只能借 PowerShell 调 user32：
   // 枚举顶层窗口，标题里含 match 的（比如 127.0.0.1:7419）就 ShowWindow(SW_MINIMIZE)。
-  const minimizeByTitle = (match) => new Promise((resolve, reject) => {
+  const minimizeByTitle = (match, exact, listMode) => new Promise((resolve, reject) => {
     if (process.platform !== 'win32') {
       reject(new ApiError(501, '这个能力只在 Windows 上有'))
       return
     }
     const stamp = `${process.pid}-${Date.now()}`
-    const script = `param([string]$Needle)
-$ErrorActionPreference = 'Stop'
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-public static class WlWin {
-  public delegate bool EnumProc(IntPtr h, IntPtr l);
-  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
-  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
-}
-"@
-$hits = New-Object System.Collections.ArrayList
-$cb = [WlWin+EnumProc]{
-  param($hWnd, $lParam)
-  if ([WlWin]::IsWindowVisible($hWnd)) {
-    $buf = New-Object System.Text.StringBuilder 512
-    [void][WlWin]::GetWindowTextW($hWnd, $buf, 512)
-    $title = $buf.ToString()
-    if ($title -and $title.IndexOf($Needle, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-      [void]$hits.Add($hWnd)
-    }
-  }
-  return $true
-}
-[void][WlWin]::EnumWindows($cb, [IntPtr]::Zero)
-$count = 0
-foreach ($h in $hits) { if ([WlWin]::ShowWindow($h, 6)) { $count++ } }
-Write-Output ("OK " + $count)
-`
+    const script = "param([string]$NeedleB64, [string]$Mode, [string]$Out)\n$ErrorActionPreference = 'Stop'\n# 中文不能过命令行/控制台（PowerShell 5.1 用 GBK 写 stdout，Node 按 UTF-8 解会乱码；\n# 反方向传中文参数同样会被毁）—— 所以 needle 用 base64 进，结果写 UTF-8 文件出。\n$cs = @'\nusing System;\nusing System.Collections.Generic;\nusing System.Runtime.InteropServices;\nusing System.Text;\npublic static class WlWin {\n  public delegate bool EnumProc(IntPtr h, IntPtr l);\n  [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);\n  [DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);\n  [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h);\n  [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int cmd);\n  public static int Minimize(string needle, bool exact) {\n    var hits = new List<IntPtr>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length == 0) return true;\n      bool hit = exact ? string.Equals(t, needle, StringComparison.Ordinal) : t.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;\n      if (hit) hits.Add(h);\n      return true;\n    }, IntPtr.Zero);\n    int n = 0;\n    foreach (var h in hits) { if (ShowWindow(h, 6)) n++; }\n    return n;\n  }\n  public static string ListTitles() {\n    var lines = new List<string>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0) lines.Add(t);\n      return true;\n    }, IntPtr.Zero);\n    return string.Join(Environment.NewLine, lines);\n  }\n}\n'@\nAdd-Type -TypeDefinition $cs\n$needle = if ($NeedleB64) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($NeedleB64)) } else { '' }\n$result = if ($Mode -eq 'list') { [WlWin]::ListTitles() } else { 'OK ' + [WlWin]::Minimize($needle, ($Mode -eq 'exact')) }\n[System.IO.File]::WriteAllText($Out, $result, (New-Object System.Text.UTF8Encoding($false)))\n"
     let scriptFile = null
     try {
       scriptFile = writeTempScript(`wl-min-${stamp}.ps1`, `\uFEFF${script}`)
@@ -556,15 +525,23 @@ Write-Output ("OK " + $count)
       reject(error)
       return
     }
+    const outFile = `${scriptFile}.out`
     const cleanup = () => {
       try { fs.unlinkSync(scriptFile) } catch { /* 没写出来就算了 */ }
+      try { fs.unlinkSync(outFile) } catch { /* 没写出来就算了 */ }
     }
     const child = spawn(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptFile, String(match)],
+      [
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptFile,
+        Buffer.from(String(match), 'utf8').toString('base64'),
+        listMode === true ? 'list' : (exact ? 'exact' : 'contains'),
+        outFile,
+      ],
       { windowsHide: true },
     )
     let out = ''
+    let err = ''
     let settled = false
     const finish = (fn, value) => {
       if (settled) return
@@ -577,14 +554,23 @@ Write-Output ("OK " + $count)
       finish(reject, new ApiError(504, '最小化超时'))
     }, 8000)
     child.stdout?.on('data', (chunk) => { out += String(chunk) })
+    child.stderr?.on('data', (chunk) => { err += String(chunk) })
     child.on('error', (error) => {
       clearTimeout(timer)
       finish(reject, new ApiError(500, `起不了 PowerShell：${String(error?.code ?? error)}`))
     })
     child.on('exit', () => {
       clearTimeout(timer)
-      const count = Number((/OK (\d+)/.exec(out) ?? [])[1] ?? 0)
-      finish(resolve, count)
+      let result = ''
+      try { result = fs.readFileSync(outFile, 'utf8') } catch { /* 脚本没写出结果 */ }
+      if (listMode === true) {
+        const titles = result.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== '')
+        finish(resolve, { count: titles.length, titles, detail: err.trim().slice(0, 600) })
+        return
+      }
+      const count = Number((/OK (\d+)/.exec(result) ?? [])[1] ?? 0)
+      // 出问题时把 PowerShell 的原话带回去，免得只剩一个 0 猜半天
+      finish(resolve, { count, detail: (err || out).trim().slice(0, 600) })
     })
   })
 
@@ -605,9 +591,14 @@ Write-Output ("OK " + $count)
     })],
     ['POST', /^\/window\/minimize$/, async ({ body }) => {
       const match = text(body.match).slice(0, 120)
+      const exact = body.exact === true
       if (match === '') throw bad('要给一个用来认窗口的标题片段')
-      const minimized = await minimizeByTitle(match)
-      return { status: 200, body: { ok: true, minimized, match } }
+      const result = await minimizeByTitle(match, exact)
+      return { status: 200, body: { ok: true, minimized: result.count, match, exact, detail: result.detail } }
+    }],
+    ['GET', /^\/window\/list$/, async () => {
+      const result = await minimizeByTitle('', false, true)
+      return { status: 200, body: { ok: true, titles: result.titles } }
     }],
     ['GET', /^\/state$/, async () => ({ status: 200, body: { ok: true, state: await snapshot() } })],
     ['GET', /^\/meta$/, async () => ({
