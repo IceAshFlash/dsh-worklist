@@ -517,7 +517,7 @@ $owner.Close()
       return
     }
     const stamp = `${process.pid}-${Date.now()}`
-    const script = "param([string]$NeedleB64, [string]$Mode, [string]$Out, [string]$Arg)\n$ErrorActionPreference = 'Stop'\n# 中文不能过命令行/控制台：PowerShell 5.1 用 GBK 写 stdout，Node 按 UTF-8 解会乱码；\n# 反过来把中文写进命令行参数同样会被毁。所以 needle 走 base64 进，结果写 UTF-8 文件出。\n$cs = @'\nusing System;\nusing System.Collections.Generic;\nusing System.Runtime.InteropServices;\nusing System.Text;\npublic static class WlWin {\n  public delegate bool EnumProc(IntPtr h, IntPtr l);\n  [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);\n  [DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);\n  [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h);\n  [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int cmd);\n  [DllImport(\"user32.dll\")] public static extern bool GetWindowRect(IntPtr h, out RECT r);\n  [DllImport(\"user32.dll\")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);\n  [DllImport(\"user32.dll\")] public static extern int GetSystemMetrics(int n);\n  public struct RECT { public int L, T, R, B; }\n\n  static IntPtr Find(string needle) {\n    IntPtr found = IntPtr.Zero;\n    EnumWindows((h, l) => {\n      if (found != IntPtr.Zero) return true;\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0 && t.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0) { found = h; return false; }\n      return true;\n    }, IntPtr.Zero);\n    return found;\n  }\n\n  public static int Minimize(string needle, bool exact) {\n    var hits = new List<IntPtr>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length == 0) return true;\n      bool hit = exact ? string.Equals(t, needle, StringComparison.Ordinal) : t.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;\n      if (hit) hits.Add(h);\n      return true;\n    }, IntPtr.Zero);\n    int n = 0;\n    foreach (var h in hits) { if (ShowWindow(h, 6)) n++; }\n    return n;\n  }\n\n  // PiP 小窗是主窗口的从属窗口，主窗口一最小化它会被一起带走，所以收起来之后单独捞回来\n  public static int RestoreLike(string prefix) {\n    int n = 0;\n    EnumWindows((h, l) => {\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0 && t.StartsWith(prefix, StringComparison.Ordinal)) { ShowWindow(h, 9); n++; }\n      return true;\n    }, IntPtr.Zero);\n    return n;\n  }\n\n  // 把承载页面的窗口整体缩成一个小窗、贴右下角、置顶；返回原来的矩形（之后用它还原）\n  public static string Frame(string needle, int w, int h) {\n    var hw = Find(needle);\n    if (hw == IntPtr.Zero) return \"\";\n    RECT r;\n    if (!GetWindowRect(hw, out r)) return \"\";\n    int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);\n    int x = sw - w - 24; if (x < 0) x = 0;\n    int y = sh - h - 56; if (y < 0) y = 0;\n    SetWindowPos(hw, new IntPtr(-1), x, y, w, h, 0x0040);\n    return r.L + \",\" + r.T + \",\" + (r.R - r.L) + \",\" + (r.B - r.T);\n  }\n\n  public static int Unframe(string needle, int x, int y, int w, int h) {\n    var hw = Find(needle);\n    if (hw == IntPtr.Zero) return 0;\n    return SetWindowPos(hw, new IntPtr(-2), x, y, w, h, 0x0040) ? 1 : 0;\n  }\n\n  public static string ListTitles() {\n    var lines = new List<string>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0) lines.Add(t);\n      return true;\n    }, IntPtr.Zero);\n    return string.Join(Environment.NewLine, lines);\n  }\n}\n'@\nAdd-Type -TypeDefinition $cs\n$needle = if ($NeedleB64) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($NeedleB64)) } else { '' }\nif ($Mode -eq 'list') { $result = [WlWin]::ListTitles() }\nelseif ($Mode -eq 'restore') { $result = 'OK ' + [WlWin]::RestoreLike($needle) }\nelseif ($Mode -eq 'frame') { $p = $Arg -split ','; $result = [WlWin]::Frame($needle, [int]$p[0], [int]$p[1]) }\nelseif ($Mode -eq 'unframe') { $p = $Arg -split ','; $result = 'OK ' + [WlWin]::Unframe($needle, [int]$p[0], [int]$p[1], [int]$p[2], [int]$p[3]) }\nelse { $result = 'OK ' + [WlWin]::Minimize($needle, ($Mode -eq 'exact')) }\n[System.IO.File]::WriteAllText($Out, $result, (New-Object System.Text.UTF8Encoding($false)))\n"
+    const script = "param([string]$NeedleB64, [string]$Mode, [string]$Out, [string]$Arg)\n$ErrorActionPreference = 'Stop'\n$cs = @'\nusing System;\nusing System.Collections.Generic;\nusing System.Runtime.InteropServices;\nusing System.Text;\npublic static class WlWin {\n  public delegate bool EnumProc(IntPtr h, IntPtr l);\n  [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);\n  [DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder s, int n);\n  [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h);\n  [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int cmd);\n  [DllImport(\"user32.dll\")] public static extern bool GetWindowRect(IntPtr h, out RECT r);\n  [DllImport(\"user32.dll\")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);\n  [DllImport(\"user32.dll\")] public static extern int GetSystemMetrics(int n);\n  [DllImport(\"user32.dll\")] public static extern bool IsZoomed(IntPtr h);\n  [DllImport(\"user32.dll\")] public static extern bool IsIconic(IntPtr h);\n  [DllImport(\"user32.dll\")] public static extern int GetWindowLongW(IntPtr h, int i);\n  public struct RECT { public int L, T, R, B; }\n\n  static IntPtr Find(string needle) {\n    IntPtr found = IntPtr.Zero;\n    EnumWindows((h, l) => {\n      if (found != IntPtr.Zero) return true;\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0 && t.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0) { found = h; return false; }\n      return true;\n    }, IntPtr.Zero);\n    return found;\n  }\n\n  public static int Minimize(string needle, bool exact) {\n    var hits = new List<IntPtr>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length == 0) return true;\n      bool hit = exact ? string.Equals(t, needle, StringComparison.Ordinal) : t.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;\n      if (hit) hits.Add(h);\n      return true;\n    }, IntPtr.Zero);\n    int n = 0;\n    foreach (var h in hits) { if (ShowWindow(h, 6)) n++; }\n    return n;\n  }\n\n  public static int RestoreLike(string prefix) {\n    int n = 0;\n    EnumWindows((h, l) => {\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0 && t.StartsWith(prefix, StringComparison.Ordinal)) { ShowWindow(h, 9); n++; }\n      return true;\n    }, IntPtr.Zero);\n    return n;\n  }\n\n  // 把承载页面的窗口整体缩成小窗、贴右下角、置顶。\n  // 1) 最大化状态：必须先 SW_RESTORE，否则 SetWindowPos 只挪位置、尺寸不动。\n  // 2) 应用自设 minimumSize：尺寸会被夹住，所以做完再量一次真实矩形带回去。\n  public static string Frame(string needle, int w, int h) {\n    var hw = Find(needle);\n    if (hw == IntPtr.Zero) return \"\";\n    RECT before;\n    bool gotBefore = GetWindowRect(hw, out before);\n    bool zoomed = IsZoomed(hw);\n    if (zoomed || IsIconic(hw)) { ShowWindow(hw, 9); System.Threading.Thread.Sleep(200); }\n    int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);\n    int x = sw - w - 24; if (x < 0) x = 0;\n    int y = sh - h - 56; if (y < 0) y = 0;\n    bool moved = SetWindowPos(hw, new IntPtr(-1), x, y, w, h, 0x0040 | 0x0100 | 0x0400);\n    int lastErr = Marshal.GetLastWin32Error();\n    // 应用会自己再摆一次窗口（最小尺寸/布局），隔一下再压一次，赢下这场拉扯\n    System.Threading.Thread.Sleep(260);\n    SetWindowPos(hw, new IntPtr(-1), x, y, w, h, 0x0040 | 0x0100 | 0x0400);\n    System.Threading.Thread.Sleep(320);\n    RECT after;\n    bool measured = GetWindowRect(hw, out after);\n    var title = new StringBuilder(512);\n    GetWindowTextW(hw, title, 512);\n    return string.Join(\"|\", new string[] {\n      hw.ToInt64().ToString(),\n      title.ToString().Trim(),\n      gotBefore ? (before.L + \",\" + before.T + \",\" + (before.R - before.L) + \",\" + (before.B - before.T)) : \"none\",\n      measured ? (after.L + \",\" + after.T + \",\" + (after.R - after.L) + \",\" + (after.B - after.T)) : \"none\",\n      moved ? \"1\" : \"0\",\n      lastErr.ToString(),\n      zoomed ? \"1\" : \"0\"\n    });\n  }\n\n  public static int Unframe(string needle, int x, int y, int w, int h, bool zoomed) {\n    var hw = Find(needle);\n    if (hw == IntPtr.Zero) return 0;\n    bool ok = SetWindowPos(hw, new IntPtr(-2), x, y, w, h, 0x0040 | 0x0100 | 0x0400);\n    if (zoomed) ShowWindow(hw, 3);\n    return ok ? 1 : 0;\n  }\n\n  public static string ListTitles() {\n    var lines = new List<string>();\n    EnumWindows((h, l) => {\n      if (!IsWindowVisible(h)) return true;\n      var buf = new StringBuilder(512);\n      GetWindowTextW(h, buf, 512);\n      var t = buf.ToString().Trim();\n      if (t.Length > 0) lines.Add(t);\n      return true;\n    }, IntPtr.Zero);\n    return string.Join(Environment.NewLine, lines);\n  }\n}\n'@\nAdd-Type -TypeDefinition $cs\n$needle = if ($NeedleB64) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($NeedleB64)) } else { '' }\nif ($Mode -eq 'list') { $result = [WlWin]::ListTitles() }\nelseif ($Mode -eq 'restore') { $result = 'OK ' + [WlWin]::RestoreLike($needle) }\nelseif ($Mode -eq 'frame') { $p = $Arg -split ','; $result = [WlWin]::Frame($needle, [int]$p[0], [int]$p[1]) }\nelseif ($Mode -eq 'unframe') { $p = $Arg -split ','; $result = 'OK ' + [WlWin]::Unframe($needle, [int]$p[0], [int]$p[1], [int]$p[2], [int]$p[3], ([int]$p[4] -eq 1)) }\nelse { $result = 'OK ' + [WlWin]::Minimize($needle, ($Mode -eq 'exact')) }\n[System.IO.File]::WriteAllText($Out, $result, (New-Object System.Text.UTF8Encoding($false)))\n"
     let scriptFile = null
     try {
       scriptFile = writeTempScript(`wl-min-${stamp}.ps1`, `\uFEFF${script}`)
@@ -586,20 +586,45 @@ $owner.Close()
       if (savedFrame === null) return { restored: false, reason: '没有记下原窗口位置' }
       const frame = savedFrame
       savedFrame = null
-      const run = await minimizeByTitle(frame.needle, false, false, 'unframe', `${frame.x},${frame.y},${frame.w},${frame.h}`)
+      const run = await minimizeByTitle(frame.needle, false, false, 'unframe', `${frame.x},${frame.y},${frame.w},${frame.h},${frame.zoomed === true ? 1 : 0}`)
       return { restored: run.count > 0, needle: frame.needle }
     }
     const width = Number(body.width) > 60 ? Math.round(Number(body.width)) : 256
     const height = Number(body.height) > 60 ? Math.round(Number(body.height)) : 256
+    let last = null
     for (const needle of matches) {
       const run = await minimizeByTitle(needle, false, false, 'frame', `${width},${height}`)
-      const parts = String(run.text || '').split(',').map((piece) => Number(piece))
-      if (parts.length === 4 && parts.every((value) => Number.isFinite(value))) {
-        savedFrame = { needle, x: parts[0], y: parts[1], w: parts[2], h: parts[3] }
-        return { framed: true, needle, from: { x: parts[0], y: parts[1], w: parts[2], h: parts[3] }, to: { w: width, h: height } }
+      last = run
+      // 返回：hwnd|标题|原矩形|实际矩形|是否挪动成功|错误码|原来是否最大化
+      const seg = String(run.text || '').split('|')
+      const box = (raw) => {
+        const nums = String(raw || '').split(',').map((piece) => Number(piece))
+        return nums.length === 4 && nums.every((value) => Number.isFinite(value)) ? { x: nums[0], y: nums[1], w: nums[2], h: nums[3] } : null
+      }
+      const beforeBox = box(seg[2])
+      const afterBox = box(seg[3])
+      if (seg.length >= 5 && beforeBox !== null) {
+        const beforeX = beforeBox.x
+        const beforeY = beforeBox.y
+        const beforeW = beforeBox.w
+        const beforeH = beforeBox.h
+        const afterW = afterBox === null ? 0 : afterBox.w
+        const afterH = afterBox === null ? 0 : afterBox.h
+        const zoomed = seg[6] === '1' ? 1 : 0
+        // 只在第一次记住原矩形：重复点小窗不该把「小窗尺寸」当成原始尺寸
+        if (savedFrame === null) savedFrame = { needle, x: beforeX, y: beforeY, w: beforeW, h: beforeH, zoomed: zoomed === 1 }
+        return {
+          framed: afterW <= beforeW && afterH <= beforeH,
+          needle,
+          before: { w: beforeW, h: beforeH },
+          after: afterBox === null ? null : { w: afterW, h: afterH },
+          window: { hwnd: seg[0], title: seg[1], movedOk: seg[4] === '1', errorCode: Number(seg[5] ?? 0) },
+          wanted: { w: width, h: height },
+          maximized: zoomed === 1,
+        }
       }
     }
-    return { framed: false }
+    return { framed: false, tried: matches, lastText: String(last?.text ?? ''), lastDetail: String(last?.detail ?? '') }
   }
   /* ---------------- 路由表 ---------------- */
 
@@ -634,7 +659,8 @@ $owner.Close()
       const matches = Array.isArray(body.matches) ? body.matches.map((item) => text(item)).filter((item) => item !== '') : []
       const fallback = text(body.match)
       if (fallback !== '') matches.push(fallback)
-      if (matches.length === 0) throw bad('要给一个用来认窗口的标题片段')
+      // restore 不需要调用方再给标题：用记下来的那一份
+      if (action !== 'restore' && matches.length === 0) throw bad('要给一个用来认窗口的标题片段')
       const result = await frameWindow(matches, action, body)
       return { status: 200, body: { ok: true, ...result } }
     }],
