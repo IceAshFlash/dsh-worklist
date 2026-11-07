@@ -112,7 +112,7 @@ const makeServer = (api) => http.createServer(async (req, res) => {
     if (url.pathname === '/icon.png') {
       const png = path.join(PACKAGE, 'icon', 'icon.png')
       if (fs.existsSync(png)) {
-        res.writeHead(200, { 'content-type': MIME['.png'], 'cache-control': 'max-age=3600' })
+        res.writeHead(200, { 'content-type': MIME['.png'], 'cache-control': 'no-store' })
         res.end(fs.readFileSync(png))
         return
       }
@@ -123,7 +123,7 @@ const makeServer = (api) => http.createServer(async (req, res) => {
     if (url.pathname === '/favicon.ico') {
       const ico = path.join(PACKAGE, 'bin', 'icon.ico')
       if (fs.existsSync(ico)) {
-        res.writeHead(200, { 'content-type': MIME['.ico'], 'cache-control': 'max-age=3600' })
+        res.writeHead(200, { 'content-type': MIME['.ico'], 'cache-control': 'no-store' })
         res.end(fs.readFileSync(ico))
         return
       }
