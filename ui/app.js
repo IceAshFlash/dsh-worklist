@@ -32,9 +32,13 @@
     '.wl-ver{padding:0 12px 10px;font-size:10px;line-height:1;color:var(--dsw-alias-label-tertiary,#8b929c);user-select:text}',
     // 专注小窗：Document PiP 窗口里是一整页，独立窗口里是一块浮层
     '.wl-mini-doc{margin:0;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1c1f24);font-family:var(--dsw-font-family,-apple-system,"Segoe UI",system-ui,sans-serif);font-size:13px}',
+    '.wl-icon.is-mini{flex:none;color:var(--wl-accent,#3f6be6)}',
+    '.wl-icon.is-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));color:var(--wl-accent-hover,#3459c4)}',
     '.wl-mini{display:flex;flex-direction:column;height:100vh;box-sizing:border-box;padding:6px 10px 10px}',
     '.wl-mini-head{display:flex;align-items:center;gap:8px;padding:4px 0 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#e2e6eb);flex:none}',
     '.wl-mini-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.wl-mini-titles{display:flex;flex-direction:column;min-width:0;gap:1px}',
+    '.wl-mini-proj{font-size:11px;line-height:1.1;color:var(--dsw-alias-label-tertiary,#8b929c);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-mini-count{margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary,#5b6470);font-variant-numeric:tabular-nums}',
     '.wl-mini-list{flex:1 1 auto;min-height:0;overflow-y:auto;padding-top:6px}',
     '.wl-mini-task{margin-bottom:2px}',
@@ -133,7 +137,7 @@
     '.wl-btn.is-ghost{border-color:transparent;background:transparent;color:var(--dsw-alias-label-secondary,#5b6470);padding:4px 6px}',
     '.wl-btn.is-ghost:hover{background:var(--dsw-alias-bg-layer-2,#f0f2f5)}',
     '.wl-btn.is-danger{color:var(--dsw-alias-state-error-primary,#e5484d);border-color:var(--dsw-alias-state-error-primary,#e5484d)}',
-    '.wl-icon{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:6px;border:0;background:transparent;color:var(--dsw-alias-label-tertiary,#8b929c);cursor:pointer;font-size:13px;line-height:1}',
+    '.wl-icon{flex:none;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:6px;border:0;background:transparent;color:var(--dsw-alias-label-secondary,#5b6470);cursor:pointer;font-size:13px;line-height:1}',
     '.wl-icon:hover{background:var(--dsw-alias-bg-layer-2,#eef0f3);color:var(--dsw-alias-label-primary,#1c1f24)}',
     '.wl-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:100%;min-height:180px;color:var(--dsw-alias-label-tertiary,#8b929c);font-size:12px;text-align:center;padding:24px}',
     '.wl-mask{position:fixed;inset:0;background:rgba(15,18,22,.42);display:flex;align-items:center;justify-content:center;padding:24px;z-index:40}',
@@ -531,7 +535,10 @@
       var category = found.category
       mini.root.appendChild(h('div', { class: 'wl-mini-head' },
         h('span', { class: 'wl-dot', style: { background: category.color } }),
-        h('span', { class: 'wl-mini-name', text: category.title, title: category.title }),
+        h('span', { class: 'wl-mini-titles' },
+          h('span', { class: 'wl-mini-name', text: category.title, title: category.title }),
+          h('span', { class: 'wl-mini-proj', text: found.project.title })
+        ),
         h('span', { class: 'wl-mini-count', text: pct(category.progress) + ' · ' + category.openCount + '/' + category.taskCount }),
         h('button', {
           class: 'wl-icon',
@@ -608,6 +615,23 @@
       return category
     }
 
+    // 给任意文档（宿主文档 / PiP 文档）设标题：
+    // 直接写 document.title 在没有 <title> 元素的文档里可能不生效，
+    // 浏览器就会退回显示 URL / 主机名（127.0.0.1 那串）。所以显式建一个 <title>。
+    var setDocTitle = function (target, value) {
+      if (target === null) return
+      try {
+        var titleEl = target.querySelector('title')
+        if (titleEl === null) {
+          titleEl = target.createElement('title')
+          var head = target.head || target.documentElement
+          head.insertBefore(titleEl, head.firstChild)
+        }
+        titleEl.textContent = value
+      } catch (error) { /* 极简文档可能不让改 */ }
+      try { target.title = value } catch (error) { /* 同上 */ }
+    }
+
     var openMini = function (project, category) {
       if (mini.categoryId === category.id) { closeMini(); return }
       if (mini.categoryId !== null) closeMini()
@@ -618,8 +642,10 @@
         Promise.resolve(pip.requestWindow({ width: 340, height: 520 })).then(function (win) {
           mini.win = win
           var pipDoc = win.document
-          try { pipDoc.title = '工作清单 · ' + category.title } catch (error) { /* 有些实现不让改标题 */ }
+          // 窗口标题必须是我们自己写的字，绝不能让浏览器退回成地址栏里的主机/IP
+          setDocTitle(pipDoc, '工作清单 · ' + category.title)
           ensureStyle(pipDoc)
+          setDocTitle(pipDoc, '工作清单 · ' + category.title)
           copyThemeVars(pipDoc, root)
           pipDoc.body.className = 'wl-mini-doc'
           mini.root = pipDoc.createElement('div')
@@ -922,7 +948,7 @@
         }, '✎'))
       }
       head.appendChild(h('button', {
-        class: 'wl-icon',
+        class: 'wl-icon is-mini',
         title: '专注小窗：只显示这个分类的工作和步骤，钉在屏幕最上层',
         onclick: function (event) {
           event.stopPropagation()
@@ -1062,48 +1088,68 @@
 
     /* ---------------- 图标（照 DSH 自带的 16×16 线性图标画） ---------------- */
 
+    var SVG_NS = 'http://www.w3.org/2000/svg'
+
+    // 关键：SVG 必须用 createElementNS 建。用 createElement('path') 得到的是一个
+    // HTMLUnknownElement，浏览器根本不画它 —— 之前图标「看不见」就是这个原因。
+    var svgEl = function (tag, props) {
+      var node = doc.createElementNS(SVG_NS, tag)
+      if (props !== undefined && props !== null) {
+        Object.keys(props).forEach(function (key) {
+          if (key === 'key') return
+          node.setAttribute(key, String(props[key]))
+        })
+      }
+      return node
+    }
+
     var svgIcon = function (children, size) {
       var side = size === undefined ? 16 : size
-      return h('svg', {
-        width: side,
-        height: side,
-        viewBox: '0 0 16 16',
-        fill: 'none',
-        stroke: 'currentColor',
-        // SVG 的呈现属性是连字符名，写成 strokeWidth 会被当成无效属性丢掉（线就退化成 1px）
-        'stroke-width': 1.6,
-        'stroke-linecap': 'round',
-        'stroke-linejoin': 'round',
-        'aria-hidden': 'true',
-      }, children.filter(function (child) { return child !== null }))
+      var node = doc.createElementNS(SVG_NS, 'svg')
+      node.setAttribute('width', String(side))
+      node.setAttribute('height', String(side))
+      node.setAttribute('viewBox', '0 0 16 16')
+      node.setAttribute('fill', 'none')
+      node.setAttribute('stroke', 'currentColor')
+      node.setAttribute('stroke-width', '1.6')
+      node.setAttribute('stroke-linecap', 'round')
+      node.setAttribute('stroke-linejoin', 'round')
+      node.setAttribute('aria-hidden', 'true')
+      node.style.flex = 'none'
+      node.style.display = 'block'
+      children.filter(function (child) { return child !== null }).forEach(function (child) {
+        node.appendChild(child)
+      })
+      return node
     }
 
     // 专注小窗：一枚「窗口套窗口」的图标，和 ＋/✎ 这些字符按钮并排
     var iconMiniWindow = function () {
       return svgIcon([
-        h('rect', { key: 'a', x: 1.4, y: 2.6, width: 13.2, height: 10.8, rx: 1.6 }),
-        h('path', { key: 'b', d: 'M1.4 6.1h13.2' }),
-        h('path', { key: 'c', d: 'M8.6 6.1v7.3' }),
+        svgEl('rect', { x: 1.6, y: 2.4, width: 12.8, height: 11.2, rx: 1.8 }),
+        svgEl('path', { d: 'M1.6 6h12.8' }),
+        svgEl('path', { d: 'M9 6v7.6' }),
+        svgEl('circle', { cx: 3.6, cy: 4.2, r: 0.55 }),
       ])
     }
 
     // IconSlidersTwoOutlineRegular —— DSH「视图选项」用的就是它（两条滑杆 + 两个旋钮）
     var iconSliders = function (size) {
       return svgIcon([
-        h('path', { key: 'a', d: 'M2.3 5h5.85M12.05 5h1.65' }),
-        h('circle', { key: 'b', cx: 9.95, cy: 5, r: 1.45 }),
-        h('path', { key: 'c', d: 'M2.3 11h1.65M7.85 11h5.85' }),
-        h('circle', { key: 'd', cx: 5.75, cy: 11, r: 1.45 }),
+        svgEl('path', { d: 'M2.3 5h5.85M12.05 5h1.65' }),
+        svgEl('circle', { cx: 9.95, cy: 5, r: 1.45 }),
+        svgEl('path', { d: 'M2.3 11h1.65M7.85 11h5.85' }),
+        svgEl('circle', { cx: 5.75, cy: 11, r: 1.45 }),
       ], size)
     }
 
     // IconArchive(Check|Off)OutlineRegular 的同一副骨架，靠多出来的那条线区分
     var iconArchive = function (checked, off) {
       return svgIcon([
-        h('rect', { key: 'r', x: 1.9, y: 2.1, width: 12.2, height: 3.4, rx: 1.1 }),
-        h('path', { key: 'b', d: 'M2.95 5.7v4.8a2.9 2.9 0 0 0 2.9 2.9h4.3a2.9 2.9 0 0 0 2.9-2.9V5.7' }),
-        checked === true ? h('path', { key: 'c', d: 'm6 9.35 1.4 1.4 2.6-2.6' }) : null,
-        off === true ? h('path', { key: 'o', d: 'm2.2 1.3 11.6 12.8' }) : null,
+        svgEl('rect', { x: 1.9, y: 2.1, width: 12.2, height: 3.4, rx: 1.1 }),
+        svgEl('path', { d: 'M2.95 5.7v4.8a2.9 2.9 0 0 0 2.9 2.9h4.3a2.9 2.9 0 0 0 2.9-2.9V5.7' }),
+        checked === true ? svgEl('path', { d: 'm6 9.35 1.4 1.4 2.6-2.6' }) : null,
+        off === true ? svgEl('path', { d: 'm2.2 1.3 11.6 12.8' }) : null,
       ])
     }
 
