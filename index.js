@@ -328,19 +328,25 @@ const installDesktopShortcut = () => {
   const sourceIcon = path.join(packageRoot, 'bin', 'icon.ico') // ui-copy-ignore
   if (!fs.existsSync(vbs)) return { ok: false, error: `缺 ${vbs}` }
   // 图标按内容哈希换个文件名：Explorer 的图标缓存是按「路径」记的，同名覆盖它不认。
-  // 目录名不带头点：头像点目录在部分 shell 代码路径里会被当成隐藏项跳过。
+  // 优先放到 ProgramData 下的纯 ASCII 目录：用户目录里的图标会被 shell 存成 %USERPROFILE%
+  // 形式，中文用户名 / 文档重定向的机器上有时解析不出来，退回系统默认白纸图标。
   let icon = sourceIcon
-  try {
-    const digest = createHash('sha256').update(fs.readFileSync(sourceIcon)).digest('hex').slice(0, 8)
-    const dir = path.join(packageRoot, 'bin', 'icons')
-    fs.mkdirSync(dir, { recursive: true })
-    icon = path.join(dir, `icon-${digest}.ico`)
-    if (!fs.existsSync(icon)) fs.copyFileSync(sourceIcon, icon)
-    for (const entry of fs.readdirSync(dir)) {
-      if (entry !== path.basename(icon)) fs.rmSync(path.join(dir, entry), { force: true })
-    }
-  } catch {
-    icon = sourceIcon
+  const digest = createHash('sha256').update(fs.readFileSync(sourceIcon)).digest('hex').slice(0, 8)
+  const candidates = [
+    path.join(process.env.ProgramData || 'C:\\ProgramData', 'dsh-worklist'),
+    path.join(packageRoot, 'bin', 'icons'),
+  ]
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+      const target = path.join(dir, `icon-${digest}.ico`)
+      if (!fs.existsSync(target)) fs.copyFileSync(sourceIcon, target)
+      for (const entry of fs.readdirSync(dir)) {
+        if (entry !== path.basename(target)) fs.rmSync(path.join(dir, entry), { force: true })
+      }
+      icon = target
+      break
+    } catch {}
   }
 
   const lines = [
