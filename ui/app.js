@@ -36,6 +36,7 @@
     '.wl-side-acts{display:flex;align-items:center;gap:2px;margin-left:auto;flex:none}',
     '.wl-icon.is-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}',
     '.wl-mini{display:flex;flex-direction:column;height:100vh;width:100%;box-sizing:border-box;padding:6px 10px 10px;overflow:hidden}',
+    '.wl-mini.is-single{height:100%;padding:8px 10px 10px}',
     '.wl-mini-head{display:flex;align-items:center;gap:8px;padding:4px 0 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#e2e6eb);flex:none}',
     '.wl-mini-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-mini-titles{display:flex;flex-direction:column;min-width:0;gap:1px}',
@@ -405,10 +406,18 @@
 
     var render = function () {
       if (mini.categoryId !== null) {
-        // 小窗开着的时候，主面板让位：只留一张「回到大窗口」的卡片，
-        // 免得两处同时改同一批数据看不出效果。
         root.textContent = ''
         root.className = 'wl-root'
+        if (mini.single === true) {
+          // 单窗口模式：整个面板就是专注视图，外面那个窗口本身已经被缩成小窗了
+          var only = h('div', { class: 'wl-mini is-single' })
+          root.appendChild(only)
+          mini.root = only
+          renderMiniBody()
+          return
+        }
+        // 小窗开着的时候，主面板让位：只留一张「回到大窗口」的卡片，
+        // 免得两处同时改同一批数据看不出效果。
         root.appendChild(renderMiniPlaceholder())
         if (mini.root !== null) renderMiniBody()
         return
@@ -444,7 +453,7 @@
      * 拿不到就退回页面内的浮动小窗（可拖、可拉、层级最高）——
      * 效果差一档，但至少能用。
      */
-    var mini = { categoryId: null, root: null, win: null, overlay: null, drag: null }
+    var mini = { categoryId: null, root: null, win: null, overlay: null, drag: null, single: false }
     // 小窗默认尺寸：四个角都可拉伸，但初始就这么大
     var MINI_SIZE = 256
 
@@ -589,6 +598,10 @@
 
     var closeMini = function () {
       mini.categoryId = null
+      if (mini.single === true) {
+        mini.single = false
+        request('POST', '/window/frame', { action: 'restore', matches: frameNeedles() }).catch(function () { /* 还不了就算了 */ })
+      }
       if (mini.win !== null) {
         var win = mini.win
         mini.win = null
@@ -656,7 +669,8 @@
       mini.categoryId = category.id
       view.expanded[category.id] = true
       var pip = window.documentPictureInPicture
-      if (window.__wlMiniOverlay !== true && pip && typeof pip.requestWindow === 'function') {
+      var wantsPip = window.__wlMiniPiP === true
+      if (wantsPip && pip && typeof pip.requestWindow === 'function') {
         Promise.resolve(pip.requestWindow({
           width: MINI_SIZE,
           height: MINI_SIZE,
@@ -690,8 +704,37 @@
         })
         return
       }
-      startOverlayMini(project, category)
+      if (window.__wlMiniOverlay === true) {
+        startOverlayMini(project, category)
+        render()
+        return
+      }
+      startSingleMini(project, category)
+    }
+
+    // 单窗口模式：面板换成专注视图，同时把外面这个窗口整体缩成小窗、置顶、贴右下角。
+    // 关掉小窗时用 POST /window/frame { action: 'restore' } 还原到原来的矩形。
+    var startSingleMini = function (project, category) {
+      mini.single = true
       render()
+      request('POST', '/window/frame', {
+        action: 'mini',
+        matches: frameNeedles(),
+        width: MINI_SIZE,
+        height: MINI_SIZE,
+      }).catch(function () { /* 缩不了也不影响专注视图 */ })
+    }
+
+    // 用来认「承载页面的那个窗口」：DSH 的标题是「<会话> — DeepSeek Harness」，
+    // 独立窗口是「工作清单」；都不中的时候退回应用名。
+    var frameNeedles = function () {
+      var list = []
+      var title = String(doc.title || '')
+      if (title !== '') list.push(title)
+      list.push('工作清单')
+      list.push('DeepSeek Harness')
+      list.push('DeepSeek')
+      return list
     }
 
     // 把 PiP 窗口压到 MINI_SIZE。resizeTo 在部分内核上对 PiP 窗口无效，
@@ -2356,6 +2399,11 @@
         if (mini.overlay !== null) {
           mini.overlay.remove()
           mini.overlay = null
+        }
+        // 单窗口模式下这个窗口本身被缩成了小窗，卸载前一定要还原，否则用户会卡在 256×256
+        if (mini.single === true) {
+          mini.single = false
+          request('POST', '/window/frame', { action: 'restore', matches: frameNeedles() }).catch(function () { /* 还不了就算了 */ })
         }
         mini.categoryId = null
         mini.root = null
