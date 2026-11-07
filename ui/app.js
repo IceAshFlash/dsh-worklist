@@ -37,6 +37,10 @@
     '.wl-icon.is-mini:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}',
     '.wl-mini{display:flex;flex-direction:column;height:100vh;width:100%;box-sizing:border-box;padding:6px 10px 10px;overflow:hidden}',
     '.wl-mini.is-single{height:100%;padding:8px 10px 10px}',
+    // 256×256 很窄：分类名优先，项目名让位
+    '.wl-mini.is-single .wl-mini-head{gap:6px;padding:2px 0 6px}',
+    '.wl-mini.is-single .wl-mini-proj{display:none}',
+    '.wl-mini.is-single .wl-mini-name{font-size:13px}',
     '.wl-mini-head{display:flex;align-items:center;gap:8px;padding:4px 0 8px;border-bottom:1px solid var(--dsw-alias-border-l2,#e2e6eb);flex:none}',
     '.wl-mini-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.wl-mini-titles{display:flex;flex-direction:column;min-width:0;gap:1px}',
@@ -548,13 +552,8 @@
         return
       }
       var category = found.category
-      if (mini.win === null) {
-        // 页面内小窗：标题和关闭按钮在顶部标题条里，这里只补一行统计
-        mini.root.appendChild(h('div', { class: 'wl-mini-meta' },
-          h('span', { class: 'wl-mini-count', text: pct(category.progress) + ' · ' + category.openCount + '/' + category.taskCount }),
-          bar(category.progress, '96px')
-        ))
-      } else {
+      if (mini.win !== null || mini.single === true) {
+        // PiP 小窗、单窗口模式：都要自己画出分类名（单窗口模式下外面没有别的标题条了）
         mini.root.appendChild(h('div', { class: 'wl-mini-head' },
           h('span', { class: 'wl-dot', style: { background: category.color } }),
           h('span', { class: 'wl-mini-titles' },
@@ -567,6 +566,12 @@
             title: '关掉小窗，回主界面',
             onclick: function () { closeMini() },
           }, '✕')
+        ))
+      } else {
+        // 页面内小窗：标题和关闭按钮在顶部标题条里，这里只补一行统计
+        mini.root.appendChild(h('div', { class: 'wl-mini-meta' },
+          h('span', { class: 'wl-mini-count', text: pct(category.progress) + ' · ' + category.openCount + '/' + category.taskCount }),
+          bar(category.progress, '96px')
         ))
       }
       var list = h('div', { class: 'wl-mini-list' })
