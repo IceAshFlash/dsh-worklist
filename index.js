@@ -328,10 +328,11 @@ const installDesktopShortcut = () => {
   const sourceIcon = path.join(packageRoot, 'bin', 'icon.ico') // ui-copy-ignore
   if (!fs.existsSync(vbs)) return { ok: false, error: `缺 ${vbs}` }
   // 图标按内容哈希换个文件名：Explorer 的图标缓存是按「路径」记的，同名覆盖它不认。
+  // 目录名不带头点：头像点目录在部分 shell 代码路径里会被当成隐藏项跳过。
   let icon = sourceIcon
   try {
     const digest = createHash('sha256').update(fs.readFileSync(sourceIcon)).digest('hex').slice(0, 8)
-    const dir = path.join(packageRoot, 'bin', '.icons')
+    const dir = path.join(packageRoot, 'bin', 'icons')
     fs.mkdirSync(dir, { recursive: true })
     icon = path.join(dir, `icon-${digest}.ico`)
     if (!fs.existsSync(icon)) fs.copyFileSync(sourceIcon, icon)
