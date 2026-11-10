@@ -250,6 +250,25 @@ try {
   const bad = await call('POST', '/projects', { title: '' })
   check('空名字被拒', bad.status === 400, `status=${bad.status}`)
 
+  // 移动到别的分类：右键菜单「移动到…」调的就是这条 PATCH，单开一个项目免得干扰别的断言
+  const mvProj = await call('POST', '/projects', { title: '搬家项目' })
+  const mvId = mvProj.payload.project?.id
+  const mvA = await call('POST', '/categories', { projectId: mvId, title: 'A 分类' })
+  const mvB = await call('POST', '/categories', { projectId: mvId, title: 'B 分类' })
+  const mvAId = mvA.payload.category?.id
+  const mvBId = mvB.payload.category?.id
+  const mvTask = await call('POST', '/tasks', { categoryId: mvAId, title: '要搬家的一条', weight: 1 })
+  const mvTaskId = mvTask.payload.task?.id
+  const mvRes = await call('PATCH', `/tasks/${mvTaskId}`, { categoryId: mvBId })
+  check('工作可以移动到别的分类', mvRes.status === 200 && mvRes.payload.task?.categoryId === mvBId, `status=${mvRes.status}`)
+  const mvState = (await call('GET', '/state')).payload.state
+  const inB = (categoryById(mvState, mvBId)?.tasks ?? []).some((item) => item.id === mvTaskId)
+  const inA = (categoryById(mvState, mvAId)?.tasks ?? []).some((item) => item.id === mvTaskId)
+  check('移动后只出现在新分类里', inB && !inA, `dest=${inB} source=${inA}`)
+  const mvProjState = mvState.projects.find((item) => item.id === mvId)
+  check('跨分类移动不影响项目任务数', mvProjState?.taskCount === 1, `taskCount=${mvProjState?.taskCount}`)
+  await call('DELETE', `/projects/${mvId}`)
+
   // 冒烟不能真去开资源管理器：开一个存在的目录会弹窗口，开一个不存在的会弹系统错误框。
   // 所以这里只验「目录不存在会被拦住」，绝不触发 openFolder。
   const gonePath = path.join(ROOT, `.smoke-gone-${process.pid}`)

@@ -89,7 +89,10 @@
     '.wl-top-subbtn:hover{color:var(--dsw-alias-label-secondary,#5b6470)}',
     '.wl-side-head .wl-btn.is-ghost{color:var(--dsw-alias-label-primary,#1c1f24)}',
     '.wl-side-head .wl-btn.is-ghost:hover{color:var(--dsw-alias-label-primary,#1c1f24);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}',
-    '.wl-menu{position:fixed;z-index:1000;min-width:176px;padding:4px;border-radius:9px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);box-shadow:0 10px 28px rgba(15,23,42,.18);color:var(--dsw-alias-label-primary,#1c1f24)}',
+    '.wl-menu{position:fixed;z-index:1000;min-width:176px;max-height:74vh;overflow-y:auto;overscroll-behavior:contain;padding:4px;border-radius:9px;background:var(--dsw-alias-bg-overlay,#fff);border:1px solid var(--dsw-alias-border-l2,#d3d8df);box-shadow:0 10px 28px rgba(15,23,42,.18);color:var(--dsw-alias-label-primary,#1c1f24)}',
+    '.wl-menu.is-sub{z-index:1001;min-width:168px}',
+    '.wl-menu-arrow{margin-left:auto;flex:none;font-size:12px;line-height:1;color:var(--dsw-alias-label-tertiary,#8b929c)}',
+    '.wl-menu-item.is-sub:hover .wl-menu-arrow{color:var(--dsw-alias-label-primary,#1c1f24)}',
     '.wl-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;padding:6px 10px;border-radius:6px;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary,#1c1f24);cursor:pointer;white-space:nowrap}',
     '.wl-menu-item:hover{background:var(--dsw-alias-bg-layer-2,#eef1f5)}',
     '.wl-menu-item.is-danger{color:var(--wl-danger,#e5484d)}',
@@ -1625,16 +1628,25 @@
     /* ---------------- 右键菜单 / 确认框 ---------------- */
 
     var menu = null
+    var subMenu = null
     var detachMenu = function () {
       doc.removeEventListener('click', closeMenu, true)
       doc.removeEventListener('contextmenu', closeMenu, true)
       doc.removeEventListener('keydown', menuKey, true)
     }
+    var detachSub = function () {
+      if (subMenu !== null && subMenu.parentNode !== null) subMenu.parentNode.removeChild(subMenu)
+      subMenu = null
+    }
     var closeMenu = function (event) {
-      if (menu === null) return
+      if (menu === null && subMenu === null) return
       // 捕获阶段的全局监听也会收到「菜单自己的」点击；那一下交给菜单项自己处理。
-      if (event && event.target && menu.contains(event.target)) return
-      if (menu.parentNode !== null) menu.parentNode.removeChild(menu)
+      if (event && event.target) {
+        if (menu !== null && menu.contains(event.target)) return
+        if (subMenu !== null && subMenu.contains(event.target)) return
+      }
+      detachSub()
+      if (menu !== null && menu.parentNode !== null) menu.parentNode.removeChild(menu)
       menu = null
       detachMenu()
     }
@@ -1726,17 +1738,17 @@
     }
 
     /*
-     * 打开菜单。
-     *
-     * event 可以是鼠标事件（右键菜单，贴着光标弹），
-     * 也可以是一个按钮元素（视图选项这种，贴着按钮下沿、右对齐）。
+     * 造一个菜单盒子（先不摆位置）。item 支持：
+     *   '-' 分隔线；{ type:'label', text } 分节标题；
+     *   { label, icon, checked, disabled, danger, run } 普通项；
+     *   { label, submenu:[…] } 二级菜单（悬停或点击展开）。
      */
-    var openMenu = function (event, items) {
-      closeMenu()
+    var buildMenu = function (items) {
       var box = h('div', { class: 'wl-menu' })
       // 菜单挂在 body 上，拿不到 root 上的主题属性与自定义变量，这里补一份
       adoptTheme(box)
       items.forEach(function (item) {
+        if (item === null || item === undefined) return
         if (item === '-') {
           box.appendChild(h('div', { class: 'wl-menu-sep' }))
           return
@@ -1745,27 +1757,81 @@
           box.appendChild(h('div', { class: 'wl-menu-label', text: item.text }))
           return
         }
+        var hasSub = Array.isArray(item.submenu) && item.submenu.length > 0
         box.appendChild(h('button', {
-          class: 'wl-menu-item' + (item.danger ? ' is-danger' : '') + (item.checked === true ? ' is-checked' : ''),
+          class: 'wl-menu-item' + (item.danger ? ' is-danger' : '') + (item.checked === true ? ' is-checked' : '') + (hasSub ? ' is-sub' : ''),
           disabled: item.disabled === true ? true : undefined,
           role: 'menuitem',
           'aria-checked': item.checked === true ? 'true' : undefined,
+          'aria-haspopup': hasSub ? 'menu' : undefined,
+          onmouseenter: function (ev) {
+            if (hasSub) openSub(ev.currentTarget, item.submenu)
+            // 只有「根菜单里的项」才需要顺手收起二级菜单，否则在二级菜单里一悬停就把它自己关了
+            else if (menu !== null && ev.currentTarget.parentNode === menu) closeSub()
+          },
           onclick: function (ev) {
             ev.stopPropagation()
-            closeMenu()
             if (item.disabled === true) return
-            item.run(item)
+            if (hasSub) {
+              openSub(ev.currentTarget, item.submenu)
+              return
+            }
+            closeMenu()
+            if (typeof item.run === 'function') item.run(item)
           },
         },
           item.icon ? h('span', { class: 'wl-menu-icon' }, menuIcon(item.icon)) : null,
           h('span', { class: 'wl-menu-text', text: item.label }),
-          item.checked === true ? h('span', { class: 'wl-menu-check', text: '✓' }) : null
+          hasSub ? h('span', { class: 'wl-menu-arrow', text: '›' }) : null,
+          item.checked === true && !hasSub ? h('span', { class: 'wl-menu-check', text: '✓' }) : null
         ))
       })
-      // 先挂上去量一下尺寸，再摆位置，免得贴边溢出。
+      return box
+    }
+
+    // 先挂上去量尺寸，再摆位置，免得贴边溢出。
+    var placeMenu = function (box, x, y) {
+      var width = box.offsetWidth
+      var height = box.offsetHeight
+      x = Math.max(4, Math.min(x, window.innerWidth - width - 8))
+      y = Math.max(4, Math.min(y, window.innerHeight - height - 8))
+      box.style.left = x + 'px'
+      box.style.top = y + 'px'
+    }
+
+    var mountBox = function (box) {
       box.style.left = '-9999px'
       box.style.top = '0px'
       doc.body.appendChild(box)
+      return box
+    }
+
+    var closeSub = function () {
+      detachSub()
+    }
+
+    // 二级菜单：贴着这一项的右边弹，右边放不下就翻到左边
+    var openSub = function (anchorEl, items) {
+      detachSub()
+      if (!Array.isArray(items) || items.length === 0) return
+      var box = mountBox(buildMenu(items))
+      box.classList.add('is-sub')
+      var rect = anchorEl.getBoundingClientRect()
+      var x = rect.right - 2
+      if (x + box.offsetWidth > window.innerWidth - 8) x = rect.left - box.offsetWidth + 2
+      placeMenu(box, x, rect.top - 4)
+      subMenu = box
+    }
+
+    /*
+     * 打开菜单。
+     *
+     * event 可以是鼠标事件（右键菜单，贴着光标弹），
+     * 也可以是一个按钮元素（视图选项这种，贴着按钮下沿、右对齐）。
+     */
+    var openMenu = function (event, items) {
+      closeMenu()
+      var box = mountBox(buildMenu(items))
       var rect = box.getBoundingClientRect()
       var anchor = event !== null && typeof event === 'object' && event.nodeType === 1 ? event : null
       var x
@@ -1780,10 +1846,7 @@
         x = event.clientX
         y = event.clientY
       }
-      x = Math.max(4, Math.min(x, window.innerWidth - rect.width - 8))
-      y = Math.max(4, Math.min(y, window.innerHeight - rect.height - 8))
-      box.style.left = x + 'px'
-      box.style.top = y + 'px'
+      placeMenu(box, x, y)
       menu = box
       // 捕获阶段挂监听：点别处、再右键、按 Esc 都关掉。
       setTimeout(function () {
@@ -2028,6 +2091,51 @@
       ].filter(function (item) { return item !== null }))
     }
 
+    /*
+     * 「移动到」的候选：本项目分类排在前，其他项目的分类按项目分节。
+     * DDL预警是自动收的、归档的默认看不见 —— 这两类都不做目标。
+     */
+    var moveTargets = function (realId, currentCategoryId, home) {
+      var data = view.data
+      if (data === null) return []
+      var categories = data.categories || []
+      var items = [{ type: 'label', text: '本项目' }]
+      var usable = function (category) {
+        return category.kind !== 'ddl' && category.archived !== true
+      }
+      var pushOne = function (category) {
+        items.push({
+          label: category.title,
+          checked: category.id === currentCategoryId,
+          disabled: category.id === currentCategoryId,
+          run: function () { moveTaskTo(realId, category.id) },
+        })
+      }
+      categories.filter(function (category) {
+        return category.projectId === home.projectId && usable(category)
+      }).forEach(pushOne)
+      var moved = false
+      ;(data.projects || []).filter(function (project) {
+        return project.id !== home.projectId && project.archived !== true
+      }).forEach(function (project) {
+        var list = categories.filter(function (category) {
+          return category.projectId === project.id && usable(category)
+        })
+        if (list.length === 0) return
+        items.push({ type: 'label', text: project.title })
+        list.forEach(pushOne)
+        moved = true
+      })
+      // 只有一个分类（就是它自己所在的），没什么可移动的
+      return items.length > 1 && (categories.length > 1 || moved) ? items : []
+    }
+
+    var moveTaskTo = function (realId, categoryId) {
+      return request('PATCH', '/tasks/' + encodeURIComponent(realId), { categoryId: categoryId })
+        .then(function () { return refresh() })
+        .catch(function (error) { notifyError(error) })
+    }
+
     var openTaskMenu = function (event, category, task) {
       var realId = task.cloneOf || task.id
       var real = view.data === null ? null : (view.data.tasks || []).filter(function (item) { return item.id === realId })[0]
@@ -2037,11 +2145,18 @@
         if (found !== undefined) home = found
       }
       var done = task.progress >= 1
+      var moveItems = real === null ? [] : moveTargets(realId, real.categoryId, home)
       openMenu(event, [
         { label: task.pinned ? '取消置顶' : '置顶工作', run: function () { setPinned('tasks', realId, !task.pinned) } },
         { label: done ? '标记为未完成' : '标记为完成', run: function () { toggleDone(realId, task, !done) } },
         '-',
         { label: '编辑…', disabled: real === null, run: function () { if (real !== null) openTaskModal(real, home) } },
+        {
+          label: '移动到…',
+          disabled: moveItems.length === 0,
+          submenu: moveItems.length === 0 ? null : moveItems,
+          run: function () {},
+        },
         '-',
         {
           label: task.archived === true ? '取消归档' : '归档工作',
