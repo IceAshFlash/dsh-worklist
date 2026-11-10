@@ -295,6 +295,9 @@ export const decorate = (state, now = Date.now()) => {
     version: state.version ?? SCHEMA_VERSION,
     updatedAt: state.updatedAt ?? 0,
     now,
+    // 外观配置跟数据一起下发：面板挂载时只请求 /state，不带这个的话
+    // 主题/强调色要等用户点进「外观」才生效（亮色主题下就是"背景仍跟随宿主"）。
+    ui: sanitizeUi(state.ui),
     projects,
     categories,
     tasks,
