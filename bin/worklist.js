@@ -178,27 +178,83 @@ const openShell = (url) => {
     : process.platform === 'darwin'
       ? path.join(PACKAGE, 'bin', 'electron', 'Electron.app', 'Contents', 'MacOS', 'Electron')
       : path.join(PACKAGE, 'bin', 'electron', 'electron')
-  if (!fs.existsSync(exe)) return null
+  if (!fs.existsSync(exe)) return Promise.resolve(null)
   const appDir = path.join(PACKAGE, 'bin', 'shell')
-  if (!fs.existsSync(appDir)) return null
+  if (!fs.existsSync(appDir)) return Promise.resolve(null)
+
+  let child = null
   try {
-    // 外壳自己会读 --url；这里直接给它，省得它再猜端口
-    const child = spawn(exe, [appDir, '--url', url], {
+    // 外壳自己会读 --url；这里直接给它，省得它再猜端口。
+    // 顺序很重要：app 目录必须排在前面，Electron 把第一个非开关参数当成应用入口；
+    // 放后面会被当成"没有应用目录"从而直接退出（实测）。
+    // --no-sandbox：从受限父进程拉起来时 Chromium 沙箱会崩，外壳只加载本地页面，关掉安全。
+    const profileDir = path.join(path.dirname(dataFile), 'dsh-worklist-shell-profile')
+    child = spawn(exe, [
+      appDir,
+      '--no-sandbox',
+      '--user-data-dir=' + profileDir,
+      '--url', url,
+    ], {
       detached: true,
       stdio: 'ignore',
       env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
     })
-    child.on('error', () => {})
-    child.unref()
-    return exe
   } catch {
-    return null
+    return Promise.resolve(null)
   }
+
+  // 外壳到底有没有起来，看它自己的日志最准：它会在 whenReady 之后写一行 "ready"。
+  // 光看进程还活着不够 —— Chromium 崩掉时主进程可能还会挂一会儿。
+  const startedAt = Date.now()
+  const logFiles = [
+    path.join(path.dirname(dataFile), 'dsh-worklist-shell.log'),
+    path.join(appDir, 'shell.log'),
+  ]
+  const shellSaidReady = () => {
+    for (const file of logFiles) {
+      try {
+        const text = fs.readFileSync(file, 'utf8')
+        const tail = text.slice(-4000)
+        for (const line of tail.split('\n')) {
+          if (!/ ready-to-show| did-fail-load| start /.test(' ' + line)) continue
+          const stamp = Date.parse(line.slice(0, 24))
+          if (Number.isFinite(stamp) && stamp >= startedAt - 2000 && /ready-to-show/.test(line)) return true
+        }
+      } catch {}
+    }
+    return false
+  }
+
+  return new Promise((resolveShell) => {
+    let settled = false
+    const settle = (value) => {
+      if (settled) return
+      settled = true
+      resolveShell(value)
+    }
+    let tries = 0
+    const tick = () => {
+      if (settled) return
+      if (child.exitCode !== null || child.signalCode !== null) return settle(null)
+      if (shellSaidReady()) return settle(exe)
+      tries += 1
+      if (tries >= 16) {
+        // 4 秒还没 ready：当作起不来，收掉进程退回浏览器窗口
+        try { child.kill() } catch {}
+        return settle(null)
+      }
+      setTimeout(tick, 250)
+    }
+    child.on('error', () => settle(null))
+    child.on('exit', () => settle(null))
+    child.unref()
+    setTimeout(tick, 250)
+  })
 }
 
 /** 用一个独立的浏览器配置目录起「应用窗口」：没有地址栏，看起来就是个桌面程序。 */
-const openWindow = (url) => {
-  const shell = openShell(url)
+const openWindow = async (url) => {
+  const shell = await openShell(url)
   if (shell !== null) return shell
   const candidates = browserCandidates()
   const profileDir = path.join(path.dirname(dataFile), 'worklist-window')
@@ -256,7 +312,7 @@ const serve = async () => {
   const existing = await probe(port0)
   if (existing !== null) {
     const url = `http://127.0.0.1:${port0}/`
-    if (has('open')) openWindow(url)
+    if (has('open')) await openWindow(url)
     process.stdout.write(`工作清单已经在跑：${url}\n数据：${existing.dataFile}\n`)
     return
   }
@@ -291,7 +347,7 @@ const serve = async () => {
   process.stdout.write(`工作清单：${url}\n数据：${dataFile}\n`)
 
   if (has('open')) {
-    const browser = openWindow(url)
+    const browser = await openWindow(url)
     process.stdout.write(`窗口：${browser === null ? '没找到浏览器，手动打开上面的地址' : browser}\n`)
   }
 

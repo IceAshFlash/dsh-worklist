@@ -19,6 +19,26 @@ const DATA = path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 
 const BOUNDS_FILE = path.join(DATA, 'dsh-worklist-window.json')
 const DEFAULT_SIZE = { width: 420, height: 640 }
 
+// 外壳静默退出时最难查，所以把关键节点和异常都落一行日志。
+// 注意：日志目录本身也可能不可写（例如被沙箱挡掉 %USERPROFILE%），所以按顺序试，
+// 最后一个兜底是外壳自己的目录 —— 这里再写不了就真的什么都记不下了。
+const APP_DIR = __dirname
+const LOG_CANDIDATES = [path.join(DATA, 'dsh-worklist-shell.log'), path.join(APP_DIR, 'shell.log')]
+const writeLog = (message) => {
+  const line = new Date().toISOString() + ' ' + message + '\n'
+  for (const target of LOG_CANDIDATES) {
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true })
+      fs.appendFileSync(target, line)
+      return
+    } catch {}
+  }
+}
+const log = writeLog
+process.on('uncaughtException', (error) => log('uncaught ' + ((error && error.stack) || error)))
+process.on('unhandledRejection', (error) => log('rejection ' + ((error && error.stack) || error)))
+log('start argv=' + JSON.stringify(argv) + ' platform=' + process.platform)
+
 const readBounds = () => {
   try {
     const raw = JSON.parse(fs.readFileSync(BOUNDS_FILE, 'utf8'))
@@ -52,8 +72,10 @@ const resolveUrl = async () => {
 }
 
 app.whenReady().then(async () => {
+  log('ready')
   const url = await resolveUrl()
   const stored = clampToScreen(readBounds())
+  log('url=' + url + ' bounds=' + JSON.stringify(stored))
   const win = new BrowserWindow({
     ...stored,
     minWidth: 260,
@@ -74,8 +96,14 @@ app.whenReady().then(async () => {
   })
   win.setMenuBarVisibility(false)
   const target = new URL(url + (url.includes('?') ? '&' : '?') + 'shell=1')
+  log('loading ' + target.toString())
   win.loadURL(target.toString())
-  win.once('ready-to-show', () => win.show())
+  win.webContents.on('did-fail-load', (_event, code, description) => log('did-fail-load ' + code + ' ' + description))
+  win.webContents.on('render-process-gone', (_event, details) => log('render-gone ' + JSON.stringify(details)))
+  win.once('ready-to-show', () => {
+    log('ready-to-show; showing')
+    win.show()
+  })
   win.on('resize', () => saveBounds(win))
   win.on('move', () => saveBounds(win))
 
