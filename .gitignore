@@ -15,3 +15,7 @@ debug.log
 
 # 桌面快捷方式的图标副本（按内容哈希命名，用来甩掉 Explorer 图标缓存）
 bin/icons/
+# 自带 Electron 外壳的运行时（本地下载，不进仓库也不进 npm 包）
+bin/electron/
+.edge-probe*/
+

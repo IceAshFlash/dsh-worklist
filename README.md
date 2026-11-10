@@ -380,9 +380,22 @@ POST   /ai-split              { title, note?, hint?, images?, projectTitle?, cat
 POST   /window/minimize       { match, exact? } 按标题最小化窗口（开小窗时把主窗口收到任务栏）
 GET    /window/list           列出本机可见窗口标题（调试用）
 GET    /ui                    读外观配置（同时返回 defaults）
-PATCH  /ui                    局部改外观：{ theme?, accent?, fontFamily?, fontScale?, radius?, sidebarWidth?, density?, showDots?, showProgressBar?, labels? }；labels 深合并，字段传 null 表示回默认
+PATCH  /ui                    局部改外观：{ theme?, accent?, fontFamily?, fontScale?, radius?, sidebarWidth?, density?, showDots?, showProgressBar?, glass?, glassAlpha?, glassBlur?, labels? }；labels 深合并，字段传 null 表示回默认
 POST   /ui/reset              外观全部回默认
 ```
+
+### 外壳模式（Electron）：让窗口真的透出桌面
+
+浏览器窗口（Edge `--app`）是**没有窗口级透明**的：`backdrop-filter` 只能糊页面自己画的底色，
+所以玻璃再调也只是"糊自己"。要看到下面的桌面，必须自己拥有窗口——`bin/shell/` 就是一个
+最小 Electron 外壳（`frame:false` + Windows 11 的 `backgroundMaterial:'acrylic'`），
+页面用 `?shell=1` 进来后 body 全透明，桌面就被系统亚克力模糊后透上来。
+
+- 运行时：`bin/electron/`（本地下载的 Electron，不进仓库、不进 npm 包；见 `.gitignore`）。
+  没有它时 `serve --open` 自动退回 Edge 窗口，功能不受影响，只是不透桌面。
+- 外壳里根节点多挂一个 `is-shell` 类，侧栏顶栏同时是拖拽区（`-webkit-app-region: drag`），
+  无边框窗口右上角自带一个 ✕。
+- 窗口大小/位置记在 `$DSH_HOME/state/dsh-worklist-window.json`。
 
 `/ai-split` 只在 DSH 里有实现（独立模式回 501）。它走 `subagents.startActivation`
 起一个 `delivery:'caller'` 的子代理，用 `outputSchema` 收 `{ steps: [{ title, weight }] }`，

@@ -230,6 +230,14 @@ window.__ModuleLoader__.load({
     '.wl-root.is-glass .wl-split-bar{background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) calc(var(--wl-glass-alpha,.22) * 80%),transparent)}',
     // 模糊不可用（老内核 / 系统关了透明效果）时退回近不透明，别把字压在花背景上
     '@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){.wl-root.is-glass .wl-mini,.wl-root.is-glass .wl-win{background:color-mix(in srgb,var(--dsw-alias-bg-overlay) 92%,transparent)}}',
+
+    /* ---- 外壳模式（Electron 亚克力窗口）：页面全透明，桌面就从窗口里透上来 ---- */
+    '.wl-root.is-shell{background:color-mix(in srgb,var(--dsw-alias-bg-base) calc(var(--wl-glass-alpha,.35) * 100%),transparent)}',
+    '.wl-root.is-shell .wl-side{background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) calc(var(--wl-glass-alpha,.35) * 80%),transparent);-webkit-app-region:drag}',
+    '.wl-root.is-shell .wl-side button,.wl-root.is-shell .wl-side input,.wl-root.is-shell .wl-side select{-webkit-app-region:no-drag}',
+    '.wl-root.is-shell .wl-side-head{-webkit-app-region:drag}',
+    '.wl-root.is-shell .wl-cat,.wl-root.is-shell .wl-task,.wl-root.is-shell .wl-proj{background:color-mix(in srgb,var(--dsw-alias-bg-overlay) calc(var(--wl-glass-alpha,.35) * 62%),transparent)}',
+    '.wl-root.is-shell .wl-win,.wl-root.is-shell .wl-mini,.wl-root.is-shell .wl-mini-overlay{background:color-mix(in srgb,var(--dsw-alias-bg-overlay) calc(var(--wl-glass-alpha,.35) * 130%),transparent)}',
     '.wl-swatch{width:24px;height:24px;padding:0;border:2px solid transparent;border-radius:50%;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}',
     '.wl-swatch.is-on{border-color:var(--dsw-alias-label-primary,#1c1f24);box-shadow:inset 0 0 0 2px var(--dsw-alias-bg-overlay,#fff)}',
     '.wl-swatch.is-picker{background:conic-gradient(#f55,#fd5,#5f5,#5ff,#55f,#f5f,#f55);overflow:hidden}',
@@ -437,6 +445,9 @@ window.__ModuleLoader__.load({
       return '#' + parts.join('')
     }
 
+    // 外壳模式：跑在自己的 Electron 窗口里（窗口有系统亚克力背板），页面透明才看得见桌面
+    var SHELL = typeof window !== 'undefined' && window.__wlShell === true
+
     var THEME_VARS = ['--wl-accent', '--wl-accent-hover', '--wl-danger', '--wl-radius', '--wl-scale', '--wl-font', '--wl-glass-alpha', '--wl-glass-blur']
 
     // 挂在 body 上的东西（右键菜单）不继承 root 的变量与主题属性，单独抄一份
@@ -466,7 +477,9 @@ window.__ModuleLoader__.load({
       root.classList.toggle('no-bar', ui.showProgressBar === false)
       // 液态玻璃：底色 alpha 与模糊半径都走变量，CSS 里两处（面板 / 小窗）共用
       root.classList.toggle('is-glass', ui.glass === true)
-      style.setProperty('--wl-glass-alpha', String(ui.glassAlpha))
+      // 外壳模式下再怎么关玻璃，窗口本身就透，至少给一层薄纱保证字能读
+      root.classList.toggle('is-shell', SHELL)
+      style.setProperty('--wl-glass-alpha', String(SHELL ? Math.min(ui.glass === true ? ui.glassAlpha : 0.35, 0.85) : ui.glassAlpha))
       style.setProperty('--wl-glass-blur', ui.glassBlur + 'px')
       // auto 时不挂属性，直接吃宿主当前主题的 token
       if (ui.theme === 'light' || ui.theme === 'dark') root.setAttribute('data-wl-theme', ui.theme)
@@ -1237,6 +1250,16 @@ window.__ModuleLoader__.load({
           }, '＋')
         )
       ))
+      // 外壳是无边框窗口，得自带一个关闭键（浏览器窗口里不需要，也不该有）
+      if (SHELL) {
+        side.querySelector('.wl-side-acts').appendChild(h('button', {
+          class: 'wl-icon',
+          type: 'button',
+          title: '关闭窗口',
+          'aria-label': '关闭窗口',
+          onclick: function () { window.close() },
+        }, '✕'))
+      }
       var list = h('div', { class: 'wl-side-list' })
       var projects = view.data === null ? [] : view.data.projects.filter(visibleArchived)
       if (projects.length === 0) {

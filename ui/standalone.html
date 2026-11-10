@@ -54,6 +54,9 @@
     overflow: hidden;
   }
   #app { height: 100vh; }
+  /* 外壳模式（Electron）：窗口后面铺的是系统亚克力，页面自己必须全透明才透得出来 */
+  body.is-shell { background: transparent !important; }
+  body.is-shell #app { background: transparent; }
 </style>
 </head>
 <body>
@@ -62,6 +65,10 @@
   <script>
     // 独立窗口：只有一个面板，标题跟着「应用名」走
     window.__wlStandalone = true
+    // ?shell=1 由 bin/shell/main.js 带上：表示我们跑在自己的 Electron 外壳里，
+    // 这时窗口有系统级亚克力背板，页面要透明才能看见桌面。
+    window.__wlShell = new URLSearchParams(location.search).get('shell') === '1'
+    if (window.__wlShell) document.body.classList.add('is-shell')
     window.__WorklistUI__.mount(document.getElementById('app'), { base: '/api' })
 
     // 窗口活着的时候每 25 秒说一句话，服务端据此判断该不该自己退出。

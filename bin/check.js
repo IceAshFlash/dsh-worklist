@@ -21,7 +21,8 @@ import { fileURLToPath } from 'node:url'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
 
-const SKIP_DIRS = new Set(['node_modules', '.git', '_downloads', 'test', 'dist'])
+// bin/electron 是本地下载的 Electron 运行时（不在仓库里），里面成千上万个 .js 不该被扫
+const SKIP_DIRS = new Set(['node_modules', '.git', '_downloads', 'test', 'dist', 'electron'])
 const WANTED = ['.js', '.mjs', '.cjs']
 
 const walk = (dir) => {

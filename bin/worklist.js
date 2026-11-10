@@ -171,8 +171,35 @@ const browserCandidates = () => {
   return ['google-chrome', 'chromium', 'chromium-browser', 'microsoft-edge']
 }
 
+/** 优先用自带 Electron 外壳：只有它能做窗口级透明（亚克力），浏览器窗口做不到。 */
+const openShell = (url) => {
+  const exe = process.platform === 'win32'
+    ? path.join(PACKAGE, 'bin', 'electron', 'electron.exe')
+    : process.platform === 'darwin'
+      ? path.join(PACKAGE, 'bin', 'electron', 'Electron.app', 'Contents', 'MacOS', 'Electron')
+      : path.join(PACKAGE, 'bin', 'electron', 'electron')
+  if (!fs.existsSync(exe)) return null
+  const appDir = path.join(PACKAGE, 'bin', 'shell')
+  if (!fs.existsSync(appDir)) return null
+  try {
+    // 外壳自己会读 --url；这里直接给它，省得它再猜端口
+    const child = spawn(exe, [appDir, '--url', url], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
+    })
+    child.on('error', () => {})
+    child.unref()
+    return exe
+  } catch {
+    return null
+  }
+}
+
 /** 用一个独立的浏览器配置目录起「应用窗口」：没有地址栏，看起来就是个桌面程序。 */
 const openWindow = (url) => {
+  const shell = openShell(url)
+  if (shell !== null) return shell
   const candidates = browserCandidates()
   const profileDir = path.join(path.dirname(dataFile), 'worklist-window')
   try { fs.mkdirSync(profileDir, { recursive: true }) } catch {}
