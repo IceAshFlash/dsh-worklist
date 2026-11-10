@@ -392,7 +392,20 @@ POST   /ui/reset              外观全部回默认
 页面用 `?shell=1` 进来后 body 全透明，桌面就被系统亚克力模糊后透上来。
 
 - 运行时：`bin/electron/`（本地下载的 Electron，不进仓库、不进 npm 包；见 `.gitignore`）。
-  没有它时 `serve --open` 自动退回 Edge 窗口，功能不受影响，只是不透桌面。
+  这里用的是 **44.7.0**（与 DSH 自带的同一大版本），从 npmmirror 下：
+
+  ```
+  curl -L -o electron.zip https://npmmirror.com/mirrors/electron/44.7.0/electron-v44.7.0-win32-x64.zip
+  tar -xf electron.zip -C bin/electron
+  ```
+
+- **起不来就退回浏览器**：`serve --open` 会盯 4 秒外壳日志，看到 `ready-to-show` 才算成功；
+  没有就杀掉进程改用 Edge `--app` 窗口。所以没有 Electron、或者 Electron 在这台机器上崩了，
+  用户拿到的还是一个能用的窗口，只是不透桌面。
+- 从受限父进程（服务、计划任务、某些沙箱）拉起时，Chromium 沙箱容易直接 `0xc0000005` 崩，
+  所以启动参数固定带 `--no-sandbox`；外壳只加载 `127.0.0.1` 上的本地页面，这个开关是安全的。
+- 排查入口：外壳会往 `$DSH_HOME/state/dsh-worklist-shell.log` 写 `start / ready / ready-to-show /
+  did-fail-load`，写不进去时退到 `bin/shell/shell.log`。
 - 外壳里根节点多挂一个 `is-shell` 类，侧栏顶栏同时是拖拽区（`-webkit-app-region: drag`），
   无边框窗口右上角自带一个 ✕。
 - 窗口大小/位置记在 `$DSH_HOME/state/dsh-worklist-window.json`。
