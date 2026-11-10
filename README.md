@@ -317,7 +317,25 @@ curl -X DELETE "http://127.0.0.1:7419/api/projects/<id>?files=1"
 | `density` | `cozy` / `compact` | 紧凑模式收紧行高与内边距 |
 | `showDots` | 布尔 | 分类色点 |
 | `showProgressBar` | 布尔 | 进度条 |
+| `glass` | 布尔 | 液态玻璃：半透明底色 + 背景模糊 |
+| `glassAlpha` | 0.04 – 0.85 | 玻璃底色不透明度，越小越透 |
+| `glassBlur` | 4 – 40 (px) | 背后内容的模糊半径 |
 | `labels` | 四个字符串 | `appName` / `projects` / `ddl` / `newTask`，各自留空回默认 |
+
+### 液态玻璃怎么用，以及它的边界
+
+开关在「外观 → 液态玻璃」里，粒度是两个滑杆：不透明度（默认 22%）和模糊（默认 20px）。
+CSS 上就是 `background: color-mix(... alpha ...)` + `backdrop-filter: blur() saturate()`，
+和 `dsh-plugin-wallpaper-engine` 一个路子——**关键是「从元素到模糊源之间不能有不透明背景」**，
+所以 `is-glass` 会把面板底色、侧栏底色、卡片底色一起换成半透明，任何一层留着实色都会让模糊静默失效。
+
+三条边界，先知道再开：
+
+1. **DSH 面板里效果最好**：小窗/弹窗背后就是会话内容，透出来的是"真的玻璃"。
+2. **独立窗口只能糊自己**：Edge `--app` 窗口没有窗口级透明，`backdrop-filter` 糊的是页面自绘的
+   渐晕（`ui/standalone.html` 的 `body` 背景），**透不到桌面**。要真透桌面得换成能拥有窗口的
+   Electron 外壳。
+3. **老内核/系统关了透明效果**：`@supports` 里退到 92% 近不透明底，保证字还能读。
 
 非法值不是报错，是**夹到边界或回默认**：色值格式不对回默认色，数值越界夹到上下限，标签换行符会被去掉、超长截断到 24 字。
 

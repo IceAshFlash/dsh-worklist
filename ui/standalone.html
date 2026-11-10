@@ -45,7 +45,14 @@
     body .wl-root { --wl-accent: #6b93ff; --wl-accent-hover: #4f7cf0; }
   }
   html, body { height: 100%; margin: 0; }
-  body { background: var(--dsw-alias-bg-base); overflow: hidden; }
+  body {
+    /* 一点极淡的斜向渐晕：玻璃靠它才看得出「糊了一层」，纯色底上看不出模糊 */
+    background:
+      radial-gradient(1200px 600px at 12% -10%, rgba(255, 255, 255, 0.10), transparent 60%),
+      radial-gradient(900px 500px at 100% 110%, rgba(120, 160, 255, 0.14), transparent 60%),
+      var(--dsw-alias-bg-base);
+    overflow: hidden;
+  }
   #app { height: 100vh; }
 </style>
 </head>

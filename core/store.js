@@ -521,6 +521,10 @@ export const DEFAULT_UI = {
   density: 'cozy', // cozy | compact
   showDots: true, // 分类名前的色点
   showProgressBar: true, // 项目行下的小进度条
+  // 液态玻璃：让专注小窗/面板变成半透明 + 背景模糊（需要底下有东西才看得出效果）
+  glass: false,
+  glassAlpha: 0.22, // 0.04 – 0.85，底色不透明度（越小越透）
+  glassBlur: 20, // 4 – 40 px，背景模糊半径
   labels: {
     appName: '工作清单',
     projects: '项目',
@@ -552,6 +556,9 @@ export const sanitizeUi = (raw) => {
     density: str(ui.density) === 'compact' ? 'compact' : 'cozy',
     showDots: ui.showDots !== false,
     showProgressBar: ui.showProgressBar !== false,
+    glass: ui.glass === true,
+    glassAlpha: Math.round(clamp(toNumber(ui.glassAlpha, DEFAULT_UI.glassAlpha), 0.04, 0.85) * 100) / 100,
+    glassBlur: Math.round(clamp(toNumber(ui.glassBlur, DEFAULT_UI.glassBlur), 4, 40)),
     labels: {
       appName: textLabel(labels.appName, DEFAULT_UI.labels.appName),
       projects: textLabel(labels.projects, DEFAULT_UI.labels.projects),

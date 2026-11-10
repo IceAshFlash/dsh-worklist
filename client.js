@@ -215,6 +215,21 @@ window.__ModuleLoader__.load({
     '.wl-root.is-compact .wl-proj{padding-top:5px;padding-bottom:5px}',
     '.wl-root.is-flat .wl-dot{display:none}',
     '.wl-root.no-bar .wl-bar{display:none}',
+
+    /* ---- 液态玻璃：半透明底色 + 背景模糊。灵感来自 dsh-plugin-wallpaper-engine 的
+       做法（background 用 color-mix 调 alpha，backdrop-filter 负责糊），要点是
+       「从元素到模糊源之间不能有不透明背景」，所以 root 和侧栏要一起放空。 ---- */
+    '.wl-root.is-glass{--wl-glass-fill:color-mix(in srgb,var(--dsw-alias-bg-base) calc(var(--wl-glass-alpha,.22) * 100%),transparent);background:var(--wl-glass-fill);-webkit-backdrop-filter:blur(var(--wl-glass-blur,20px)) saturate(1.6) brightness(1.03);backdrop-filter:blur(var(--wl-glass-blur,20px)) saturate(1.6) brightness(1.03)}',
+    '.wl-root.is-glass .wl-side{background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) calc(var(--wl-glass-alpha,.22) * 70%),transparent);-webkit-backdrop-filter:blur(calc(var(--wl-glass-blur,20px) * .6));backdrop-filter:blur(calc(var(--wl-glass-blur,20px) * .6))}',
+    '.wl-root.is-glass .wl-proj,.wl-root.is-glass .wl-cat,.wl-root.is-glass .wl-task{background:color-mix(in srgb,var(--dsw-alias-bg-overlay) calc(var(--wl-glass-alpha,.22) * 55%),transparent)}',
+    '.wl-root.is-glass .wl-cat{border-color:color-mix(in srgb,var(--dsw-alias-border-l1) 70%,transparent)}',
+    '.wl-root.is-glass .wl-task{border-color:color-mix(in srgb,var(--dsw-alias-border-l1) 55%,transparent)}',
+    '.wl-root.is-glass .wl-mini,.wl-root.is-glass .wl-mini-overlay{background:var(--wl-glass-fill);-webkit-backdrop-filter:blur(var(--wl-glass-blur,20px)) saturate(1.7);backdrop-filter:blur(var(--wl-glass-blur,20px)) saturate(1.7);border:1px solid color-mix(in srgb,var(--dsw-alias-border-l2) 60%,transparent);box-shadow:0 18px 48px rgba(15,18,22,.28),inset 0 1px 0 rgba(255,255,255,.18)}',
+    '.wl-root.is-glass .wl-win{background:color-mix(in srgb,var(--dsw-alias-bg-overlay) calc(var(--wl-glass-alpha,.22) * 130%),transparent);-webkit-backdrop-filter:blur(calc(var(--wl-glass-blur,20px) * 1.2));backdrop-filter:blur(calc(var(--wl-glass-blur,20px) * 1.2));border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 70%,transparent)}',
+    '.wl-root.is-glass .wl-win-foot{background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) calc(var(--wl-glass-alpha,.22) * 90%),transparent)}',
+    '.wl-root.is-glass .wl-split-bar{background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) calc(var(--wl-glass-alpha,.22) * 80%),transparent)}',
+    // 模糊不可用（老内核 / 系统关了透明效果）时退回近不透明，别把字压在花背景上
+    '@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){.wl-root.is-glass .wl-mini,.wl-root.is-glass .wl-win{background:color-mix(in srgb,var(--dsw-alias-bg-overlay) 92%,transparent)}}',
     '.wl-swatch{width:24px;height:24px;padding:0;border:2px solid transparent;border-radius:50%;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}',
     '.wl-swatch.is-on{border-color:var(--dsw-alias-label-primary,#1c1f24);box-shadow:inset 0 0 0 2px var(--dsw-alias-bg-overlay,#fff)}',
     '.wl-swatch.is-picker{background:conic-gradient(#f55,#fd5,#5f5,#5ff,#55f,#f5f,#f55);overflow:hidden}',
@@ -382,6 +397,9 @@ window.__ModuleLoader__.load({
       density: 'cozy',
       showDots: true,
       showProgressBar: true,
+      glass: false,
+      glassAlpha: 0.22,
+      glassBlur: 20,
       labels: { appName: '工作清单', projects: '项目', ddl: 'DDL预警', newTask: '新建工作' },
     }
 
@@ -433,6 +451,10 @@ window.__ModuleLoader__.load({
       root.classList.toggle('is-compact', ui.density === 'compact')
       root.classList.toggle('is-flat', ui.showDots === false)
       root.classList.toggle('no-bar', ui.showProgressBar === false)
+      // 液态玻璃：底色 alpha 与模糊半径都走变量，CSS 里两处（面板 / 小窗）共用
+      root.classList.toggle('is-glass', ui.glass === true)
+      style.setProperty('--wl-glass-alpha', String(ui.glassAlpha))
+      style.setProperty('--wl-glass-blur', ui.glassBlur + 'px')
       // auto 时不挂属性，直接吃宿主当前主题的 token
       if (ui.theme === 'light' || ui.theme === 'dark') root.setAttribute('data-wl-theme', ui.theme)
       else root.removeAttribute('data-wl-theme')
@@ -489,7 +511,10 @@ window.__ModuleLoader__.load({
       }
 
       var slider = function (label, options) {
+        // toValue：存的值 → 滑杆上的数；fromValue：滑杆上的数 → 存的值。
+        // 两者分开，是因为像字号这种「存 1.0、显示 100%」的字段需要反向换算。
         var toValue = typeof options.toValue === 'function' ? options.toValue : function (value) { return value }
+        var fromValue = typeof options.fromValue === 'function' ? options.fromValue : toValue
         var format = typeof options.format === 'function' ? options.format : function (value) { return String(value) }
         var current = toValue(uiOf()[options.key])
         var value = h('span', { class: 'wl-hint', style: { minWidth: '46px', textAlign: 'right' }, text: format(current) })
@@ -501,9 +526,10 @@ window.__ModuleLoader__.load({
           step: String(options.step || 1),
           value: String(current),
           oninput: function (event) {
-            var raw = toValue(Number(event.target.value))
-            value.textContent = format(raw)
-            setUi((function () { var patch = {}; patch[options.key] = raw; return patch })())
+            var shown = Number(event.target.value)
+            value.textContent = format(shown)
+            var stored = fromValue(shown)
+            setUi((function () { var patch = {}; patch[options.key] = stored; return patch })())
           },
         })
         return h('div', { class: 'wl-field', style: { flex: '1 1 0' } },
@@ -556,7 +582,14 @@ window.__ModuleLoader__.load({
 
         // 字号 / 圆角 / 侧栏宽度
         body.appendChild(h('div', { class: 'wl-row', style: { gap: '16px' } },
-          slider('字号', { key: 'fontScale', min: 85, max: 130, toValue: function (value) { return Math.round(value * 100) }, format: function (value) { return value + '%' } }),
+          slider('字号', {
+            key: 'fontScale',
+            min: 85,
+            max: 130,
+            toValue: function (value) { return Math.round(Number(value) * 100) },
+            fromValue: function (shown) { return shown / 100 },
+            format: function (shown) { return shown + '%' },
+          }),
           slider('圆角', { key: 'radius', min: 0, max: 18, format: function (value) { return value + 'px' } })
         ))
         body.appendChild(h('div', { class: 'wl-row', style: { gap: '16px' } },
@@ -576,6 +609,28 @@ window.__ModuleLoader__.load({
           toggle('分类色点', 'showDots', ui.showDots !== false, ui.showDots === false),
           toggle('进度条', 'showProgressBar', ui.showProgressBar !== false, ui.showProgressBar === false),
         ]))
+
+        // 液态玻璃：半透明 + 背景模糊（DSH 面板与专注小窗都吃这一套）
+        body.appendChild(section('液态玻璃', [
+          toggle('玻璃质感', 'glass', ui.glass === true, ui.glass !== true),
+        ]))
+        body.appendChild(h('div', { class: 'wl-row', style: { gap: '16px' } },
+          slider('不透明度', {
+            key: 'glassAlpha',
+            min: 4,
+            max: 85,
+            toValue: function (value) { return Math.round(Number(value) * 100) },
+            fromValue: function (shown) { return shown / 100 },
+            format: function (shown) { return shown + '%' },
+          }),
+          slider('模糊', {
+            key: 'glassBlur',
+            min: 4,
+            max: 40,
+            format: function (shown) { return shown + 'px' },
+          })
+        ))
+        body.appendChild(h('div', { class: 'wl-hint', text: '玻璃要「背后有东西」才看得出效果：在 DSH 面板里能透出下面的内容；独立窗口只能糊自己的底色，透不到桌面。' }))
 
         // 标签文案
         var labelRow = function (key, text) {

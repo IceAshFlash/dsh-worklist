@@ -88,6 +88,11 @@ try {
     uiClamped.payload.ui?.sidebarWidth === 380 && uiClamped.payload.ui?.accent === '#3f6be6', JSON.stringify(uiClamped.payload.ui))
   const uiReset = await call('POST', '/ui/reset')
   check('恢复默认外观', uiReset.payload.ui?.theme === 'auto' && uiReset.payload.ui?.labels?.appName === '工作清单')
+  // 液态玻璃：默认关；开了之后 alpha / blur 都要被夹到可用区间
+  check('玻璃默认关', uiDefault.payload.ui?.glass === false && uiDefault.payload.ui?.glassAlpha > 0 && uiDefault.payload.ui?.glassBlur >= 4)
+  const uiGlass = await call('PATCH', '/ui', { glass: true, glassAlpha: 2, glassBlur: 999 })
+  check('玻璃参数被夹住', uiGlass.payload.ui?.glass === true &&
+    uiGlass.payload.ui?.glassAlpha === 0.85 && uiGlass.payload.ui?.glassBlur === 40, JSON.stringify(uiGlass.payload.ui))
 
   fs.mkdirSync(FS_ROOT, { recursive: true })
   const project = await call('POST', '/projects', { title: '冒烟项目', path: FS_ROOT })
