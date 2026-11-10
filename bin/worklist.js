@@ -171,8 +171,15 @@ const browserCandidates = () => {
   return ['google-chrome', 'chromium', 'chromium-browser', 'microsoft-edge']
 }
 
-/** 优先用自带 Electron 外壳：只有它能做窗口级透明（亚克力），浏览器窗口做不到。 */
+/**
+ * 用自带 Electron 外壳开窗：只有它能做窗口级透明（亚克力），浏览器窗口做不到。
+ *
+ * 默认不启用 —— 这台机器上 electron.exe 一启动就 0xc0000005 崩（45.2.3 / 44.7.0 都一样，
+ * Smart App Control 与 Defender 都没拦），`app.whenReady()` 永不触发，只能靠 4 秒超时退回
+ * 浏览器窗口。既然默认走浏览器更快，就把外壳收进开关后面：设 WL_SHELL=1 才尝试。
+ */
 const openShell = (url) => {
+  if (process.env.WL_SHELL !== '1') return Promise.resolve(null)
   const exe = process.platform === 'win32'
     ? path.join(PACKAGE, 'bin', 'electron', 'electron.exe')
     : process.platform === 'darwin'

@@ -20,10 +20,10 @@ const BOUNDS_FILE = path.join(DATA, 'dsh-worklist-window.json')
 const DEFAULT_SIZE = { width: 420, height: 640 }
 
 // 外壳静默退出时最难查，所以把关键节点和异常都落一行日志。
-// 注意：日志目录本身也可能不可写（例如被沙箱挡掉 %USERPROFILE%），所以按顺序试，
-// 最后一个兜底是外壳自己的目录 —— 这里再写不了就真的什么都记不下了。
+// 顺序是「包目录优先」：实测 %USERPROFILE%\.dsh\state 在本机写不进去（从桌面快捷方式
+// 启动也一样），而 bin\shell\ 一直是可写的；反过来试会白丢第一条日志。
 const APP_DIR = __dirname
-const LOG_CANDIDATES = [path.join(DATA, 'dsh-worklist-shell.log'), path.join(APP_DIR, 'shell.log')]
+const LOG_CANDIDATES = [path.join(APP_DIR, 'shell.log'), path.join(DATA, 'dsh-worklist-shell.log')]
 const writeLog = (message) => {
   const line = new Date().toISOString() + ' ' + message + '\n'
   for (const target of LOG_CANDIDATES) {
