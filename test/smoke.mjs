@@ -269,6 +269,28 @@ try {
   check('跨分类移动不影响项目任务数', mvProjState?.taskCount === 1, `taskCount=${mvProjState?.taskCount}`)
   await call('DELETE', `/projects/${mvId}`)
 
+  // 已完成的工作不算逾期：项目/分类级的「逾期」只看没做完的
+  const odProj = await call('POST', '/projects', { title: '逾期项目' })
+  const odId = odProj.payload.project?.id
+  const odCat = await call('POST', '/categories', { projectId: odId, title: '逾期分类' })
+  const odCatId = odCat.payload.category?.id
+  const past = new Date(Date.now() - 3 * 86400000).toISOString()
+  const odTask = await call('POST', '/tasks', { categoryId: odCatId, title: '过期的小事', dueAt: past })
+  const odTaskId = odTask.payload.task?.id
+  let odState = (await call('GET', '/state')).payload.state
+  const odBefore = odState.projects.find((item) => item.id === odId)
+  check('没做完的过期工作算逾期', odBefore?.due === 'overdue', `due=${odBefore?.due}`)
+  await call('PATCH', `/tasks/${odTaskId}`, { done: true })
+  odState = (await call('GET', '/state')).payload.state
+  const odAfter = odState.projects.find((item) => item.id === odId)
+  const odCatAfter = categoryById(odState, odCatId)
+  check(
+    '做完的工作不再算逾期',
+    odAfter?.due !== 'overdue' && odCatAfter?.due !== 'overdue',
+    `project=${odAfter?.due} category=${odCatAfter?.due}`,
+  )
+  await call('DELETE', `/projects/${odId}`)
+
   // 冒烟不能真去开资源管理器：开一个存在的目录会弹窗口，开一个不存在的会弹系统错误框。
   // 所以这里只验「目录不存在会被拦住」，绝不触发 openFolder。
   const gonePath = path.join(ROOT, `.smoke-gone-${process.pid}`)

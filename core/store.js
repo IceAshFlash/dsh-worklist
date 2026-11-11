@@ -235,10 +235,13 @@ export const decorate = (state, now = Date.now()) => {
     // 归档的工作留在列表里（切到"含归档"还能看见），但不参与进度和计数。
     const counted = own.filter((task) => task.archived !== true)
     const progress = weightedAverage(counted.map((task) => ({ weight: task.weight, progress: task.progress })))
-    const dueAt = counted.reduce((min, task) => {
-      if (!Number.isFinite(task.dueAt)) return min
-      return min === null || task.dueAt < min ? task.dueAt : min
-    }, null)
+    // 已完成的工作（哪怕还没归档）不再参与截止时间：做完了就不该再被报"逾期"。
+    const dueAt = counted
+      .filter((task) => task.progress < 1)
+      .reduce((min, task) => {
+        if (!Number.isFinite(task.dueAt)) return min
+        return min === null || task.dueAt < min ? task.dueAt : min
+      }, null)
     const warnHours = clampWarnHours(projectsRaw.find((item) => item.id === category.projectId)?.warnHours)
     return {
       ...category,

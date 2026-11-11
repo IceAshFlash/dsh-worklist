@@ -303,6 +303,8 @@
     if (task.due === 'none' || !Number.isFinite(task.dueAt)) return null
     var date = new Date(task.dueAt)
     var stamp = (date.getMonth() + 1) + '/' + date.getDate()
+    // 已经做完的只留日期，不报逾期/今天/剩几天 —— 事情做完了，日期只是个记录。
+    if (task.progress >= 1) return h('span', { class: 'wl-chip', title: date.toLocaleString() }, stamp)
     var tone = task.due === 'overdue' ? ' is-overdue' : task.due === 'today' ? ' is-today' : task.due === 'soon' ? ' is-soon' : ''
     var text = stamp
     if (task.due === 'overdue') text = stamp + ' 逾期'
@@ -360,11 +362,22 @@
       if (ARCHIVE_MODES.indexOf(savedMode) >= 0) view.archiveMode = savedMode
     } catch (error) { /* 独立窗口可能没有 localStorage */ }
 
-    var visibleArchived = function (item) {
-      if (item.archived !== true && view.archiveMode === 'only') return false
-      if (view.archiveMode === 'hide') return item.archived !== true
-      if (view.archiveMode === 'only') return item.archived === true
-      return true
+    /*
+     * 三种视角在三个层级上的规则不一样：
+     * - 项目：只看归档时，自己没归档但"里面有归档内容"的项目也要留在侧栏；
+     * - 分类：只看归档时**全部分类都显示** —— 否则归档的工作藏在哪个分类里都找不到；
+     * - 工作：只看归档时只留归档的；整条分类被归档时，它下面的工作全都算归档。
+     */
+    var visibleProject = function (project) {
+      if (view.archiveMode === 'hide') return project.archived !== true
+      if (view.archiveMode === 'all') return true
+      return project.archived === true || (project.archivedCount || 0) > 0
+    }
+
+    var visibleTask = function (category, task) {
+      if (view.archiveMode === 'hide') return task.archived !== true
+      if (view.archiveMode === 'all') return true
+      return category !== null && category.archived === true ? true : task.archived === true
     }
 
     var setArchiveMode = function (mode) {
@@ -733,9 +746,9 @@
       if (state && state.ui && typeof state.ui === 'object') view.ui = state.ui
       view.error = null
       view.loading = false
-      var exists = view.data.projects.some(function (p) { return p.id === view.selectedProjectId && visibleArchived(p) })
+      var exists = view.data.projects.some(function (p) { return p.id === view.selectedProjectId && visibleProject(p) })
       if (!exists) {
-        var shown = view.data.projects.filter(visibleArchived)
+        var shown = view.data.projects.filter(visibleProject)
         var withOpen = shown.filter(function (p) { return p.openCount > 0 })
         view.selectedProjectId = (withOpen[0] || shown[0] || {}).id || null
       }
@@ -965,7 +978,7 @@
         ))
       }
       var list = h('div', { class: 'wl-mini-list' })
-      var tasks = category.tasks.filter(visibleArchived)
+      var tasks = category.tasks.filter(function (task) { return visibleTask(category, task) })
       if (tasks.length === 0) {
         list.appendChild(h('div', { class: 'wl-hint', style: { padding: '10px 2px' }, text: '这个分类下还没有工作。' }))
       }
@@ -1244,7 +1257,7 @@
         }, '✕'))
       }
       var list = h('div', { class: 'wl-side-list' })
-      var projects = view.data === null ? [] : view.data.projects.filter(visibleArchived)
+      var projects = view.data === null ? [] : view.data.projects.filter(visibleProject)
       if (projects.length === 0) {
         list.appendChild(h('div', { class: 'wl-hint', style: { padding: '8px 10px' }, text: '还没有项目' }))
       }
@@ -1272,8 +1285,15 @@
         h('div', { class: 'wl-proj-meta' },
           bar(item.progress, '56px'),
           h('span', { text: item.openCount + '/' + item.taskCount }),
-          item.warningCount > 0 ? h('span', { class: 'wl-chip is-warn', text: 'DDL ' + item.warningCount, title: '进入预警窗口、还没做完的工作数' }) : null,
-          item.due === 'overdue' ? h('span', { class: 'wl-chip is-overdue', text: '逾期' }) : null
+          view.archiveMode === 'only' && item.archivedCount > 0
+            ? h('span', { class: 'wl-chip', text: '归档 ' + item.archivedCount, title: '这个项目里已归档的工作数' })
+            : null,
+          view.archiveMode === 'only'
+            ? null
+            : item.warningCount > 0 ? h('span', { class: 'wl-chip is-warn', text: 'DDL ' + item.warningCount, title: '进入预警窗口、还没做完的工作数' }) : null,
+          view.archiveMode === 'only' || item.due !== 'overdue'
+            ? null
+            : h('span', { class: 'wl-chip is-overdue', text: '逾期' })
         ))
         list.appendChild(button)
       })
@@ -1374,9 +1394,10 @@
         return scroll
       }
       project.categories.filter(function (category) {
-        // DDL预警 是自动桶，没有归档内容，切到「只看归档」时收起来。
+        // DDL预警 是自动桶，没有归档内容，切到「只看归档」时收起来；
+        // 其余分类一律显示 —— 「只看归档」时也要能看见归档的工作原本挂在哪个分类下。
         if (category.kind === 'ddl') return view.archiveMode !== 'only'
-        return visibleArchived(category)
+        return true
       }).forEach(function (category) {
         scroll.appendChild(renderCategory(project, category))
       })
@@ -1529,7 +1550,7 @@
           text: isDdl ? '暂时没有撞上预警线的工作。' : '这个分类下还没有工作。',
         }))
       }
-      category.tasks.filter(visibleArchived).forEach(function (task) {
+      category.tasks.filter(function (task) { return visibleTask(category, task) }).forEach(function (task) {
         body.appendChild(renderTask(category, task))
       })
       box.appendChild(body)
