@@ -19,3 +19,6 @@ bin/icons/
 bin/electron/
 .edge-probe*/
 
+dsh-worklist-serve.json
+.smoke-fs-*/
+.tmp-*/

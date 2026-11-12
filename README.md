@@ -32,6 +32,23 @@ plugin_manager({ action: 'install_bundle', target: 'C:\\path\\to\\dsh-worklist' 
 装完刷新页面，侧栏出「工作清单」。之后改了代码，用 `set_bundle { enabled: true }` 重新 apply 即可
 （`link:` 装法，不需要重装）；改的是 `ui/app.js` 要先跑一次 `bin/build.js`。
 
+### 只留一个窗口
+
+双击快捷方式时，如果已经有一个在跑，新启动的那个**不再开第二个窗口**，而是把已有窗口叫到前面来
+（`POST /api/window/focus`；Windows 上先 `ShowWindow(SW_RESTORE)`，再「置顶 → `SetForegroundWindow` →
+取消置顶」，绕过系统的前台锁定）。
+
+锁文件跟数据文件放在一起：`dsh-worklist-serve.json`，内容是 `{ pid, port, url, startedAt }`，用
+`flag: 'wx'` 独占创建。
+
+| 情况 | 行为 |
+| --- | --- |
+| 锁在、那个服务也应答 | 唤醒它的窗口，自己退出（不会再起 node 服务） |
+| 锁在、服务已经不在了 | 当成上次崩溃的残留，删掉锁，正常启动 |
+| 端口上确实是我们的服务（锁丢了） | 同样只唤醒，不开第二个 |
+| 两个启动器同时点进来 | 只有抢到锁的那个建服务，另一个去唤醒它 |
+| 正常退出（Ctrl+C、空闲自动退出） | 删锁 |
+
 ## 数据模型
 
 ```

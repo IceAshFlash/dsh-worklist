@@ -312,15 +312,92 @@ const probe = (port) => new Promise((resolve) => {
   req.on('timeout', () => { req.destroy(); resolve(null) })
 })
 
+/**
+ * 单实例：桌面上只允许一个窗口。
+ * 锁文件跟数据文件放一起（谁的数据归谁管），里面记 pid / 端口 / 地址。
+ */
+const lockFile = () => path.join(path.dirname(dataFile), 'dsh-worklist-serve.json')
+
+const readLock = () => {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(lockFile(), 'utf8'))
+    return parsed !== null && typeof parsed === 'object' && typeof parsed.url === 'string' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/** 独占创建锁；false 表示别人抢先了（或锁还在）。 */
+const writeLock = (port) => {
+  const body = JSON.stringify({ pid: process.pid, port, url: `http://127.0.0.1:${port}/`, startedAt: new Date().toISOString() })
+  try {
+    fs.mkdirSync(path.dirname(lockFile()), { recursive: true })
+    fs.writeFileSync(lockFile(), body, { flag: 'wx' })
+    return true
+  } catch (error) {
+    if (error?.code === 'EEXIST') return false
+    return true // 锁写不下去不该挡住开窗
+  }
+}
+
+const dropLock = () => {
+  const held = readLock()
+  if (held === null || held.pid !== process.pid) return
+  try { fs.unlinkSync(lockFile()) } catch {}
+}
+
+/** 窗口标题里可能出现的词：用户改过的应用名优先，再退回默认名。 */
+const windowNeedles = () => {
+  let appName = ''
+  try {
+    const state = JSON.parse(fs.readFileSync(dataFile, 'utf8'))
+    const label = state?.ui?.labels?.appName
+    if (typeof label === 'string') appName = label.trim()
+  } catch {}
+  const list = []
+  if (appName !== '') list.push(appName)
+  for (const name of ['工作清单', 'Worklist']) if (!list.includes(name)) list.push(name)
+  return list
+}
+
+/** 把已经在跑的那个窗口叫到前面来。 */
+const focusExisting = async (url) => {
+  try {
+    const res = await fetch(`${url}api/window/focus`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ matches: windowNeedles() }),
+      signal: AbortSignal.timeout(6000),
+    })
+    const payload = await res.json()
+    return payload !== null && payload.focused === true
+  } catch {
+    return false
+  }
+}
+
 const serve = async () => {
   const requested = Number(flag('port', argValue('port') ?? DEFAULT_PORT))
   const port0 = Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_PORT
 
+  // 单实例：锁还在、那边的服务也应答，就只把那个窗口叫到前面来。
+  const held = readLock()
+  if (held !== null) {
+    const alive = await probe(Number(held.port) || port0)
+    if (alive !== null) {
+      const raised = has('open') ? await focusExisting(held.url) : false
+      process.stdout.write(`工作清单已经在跑：${held.url}${raised ? '（已切到那个窗口）' : ''}\n数据：${alive.dataFile}\n`)
+      return
+    }
+    try { fs.unlinkSync(lockFile()) } catch {} // 锁是上一次崩溃留下的
+  }
+
+  // 兜底：端口上确实有我们的服务（锁文件可能丢过），同样不开第二个窗口。
   const existing = await probe(port0)
   if (existing !== null) {
     const url = `http://127.0.0.1:${port0}/`
-    if (has('open')) await openWindow(url)
-    process.stdout.write(`工作清单已经在跑：${url}\n数据：${existing.dataFile}\n`)
+    const raised = has('open') ? await focusExisting(url) : false
+    process.stdout.write(`工作清单已经在跑：${url}${raised ? '（已切到那个窗口）' : ''}\n数据：${existing.dataFile}\n`)
     return
   }
 
@@ -352,6 +429,19 @@ const serve = async () => {
 
   const url = `http://127.0.0.1:${port}/`
   process.stdout.write(`工作清单：${url}\n数据：${dataFile}\n`)
+
+  // 抢锁：两个启动器同时点进来时，只有一个能拿到锁，另一个去叫醒它。
+  if (!writeLock(port)) {
+    const winner = readLock()
+    server.close()
+    const raised = winner !== null && has('open') ? await focusExisting(winner.url) : false
+    process.stdout.write(`工作清单已经在跑：${winner === null ? '（锁被别的进程占着）' : winner.url}${raised ? '（已切到那个窗口）' : ''}\n`)
+    return
+  }
+  process.on('exit', dropLock)
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => { dropLock(); process.exit(0) })
+  }
 
   if (has('open')) {
     const browser = await openWindow(url)
