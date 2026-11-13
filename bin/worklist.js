@@ -92,6 +92,9 @@ const readBody = async (req) => {
   return JSON.parse(raw)
 }
 
+// 页面开着的时候每 20 秒打一次心跳；窗口关了就没有了 —— 用来判断「还有没有窗口」。
+let pagePingAt = 0
+
 const makeServer = (api) => http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost')
   const method = (req.method ?? 'GET').toUpperCase()
@@ -131,10 +134,20 @@ const makeServer = (api) => http.createServer(async (req, res) => {
       res.end()
       return
     }
+    if (url.pathname === '/api/page-ping') {
+      pagePingAt = Date.now()
+      res.writeHead(204, { 'cache-control': 'no-store' })
+      res.end()
+      return
+    }
     if (url.pathname.startsWith('/api')) {
       const inner = new URL(`http://localhost${url.pathname.slice(4) || '/'}${url.search}`)
       const body = method === 'POST' || method === 'PATCH' || method === 'DELETE' ? await readBody(req) : {}
       const result = await api({ method, url: inner, body })
+      // /meta 是别的启动器来问「你还活着吗」，顺便告诉它窗口还在不在
+      if (method === 'GET' && inner.pathname === '/meta' && result.body !== null && typeof result.body === 'object' && result.body.ok === true) {
+        result.body.windowSeenMs = pagePingAt === 0 ? null : Math.max(0, Date.now() - pagePingAt)
+      }
       const text = JSON.stringify(result.body)
       res.writeHead(result.status, {
         'content-type': 'application/json; charset=utf-8',
@@ -376,6 +389,25 @@ const focusExisting = async (url) => {
   }
 }
 
+/**
+ * 服务已经在跑：窗口还开着就把那个窗口叫到前面来；窗口早就关了（页面不再心跳）
+ * 就对着同一个服务重新开一个 —— 否则用户点了快捷方式会觉得没反应。
+ */
+const reuseRunning = async (meta, url) => {
+  const seen = meta.windowSeenMs
+  const pageAlive = typeof seen === 'number' && seen < 90000
+  let note = ''
+  if (has('open')) {
+    if (pageAlive) {
+      note = await focusExisting(url) ? '（已切到那个窗口）' : '（窗口应该还在，但没叫起来，手动点一下任务栏）'
+    } else {
+      await openWindow(url)
+      note = '（窗口刚才关掉了，已重新打开）'
+    }
+  }
+  process.stdout.write(`工作清单已经在跑：${url}${note}\n数据：${meta.dataFile}\n`)
+}
+
 const serve = async () => {
   const requested = Number(flag('port', argValue('port') ?? DEFAULT_PORT))
   const port0 = Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_PORT
@@ -385,8 +417,7 @@ const serve = async () => {
   if (held !== null) {
     const alive = await probe(Number(held.port) || port0)
     if (alive !== null) {
-      const raised = has('open') ? await focusExisting(held.url) : false
-      process.stdout.write(`工作清单已经在跑：${held.url}${raised ? '（已切到那个窗口）' : ''}\n数据：${alive.dataFile}\n`)
+      await reuseRunning(alive, held.url)
       return
     }
     try { fs.unlinkSync(lockFile()) } catch {} // 锁是上一次崩溃留下的
@@ -395,9 +426,7 @@ const serve = async () => {
   // 兜底：端口上确实有我们的服务（锁文件可能丢过），同样不开第二个窗口。
   const existing = await probe(port0)
   if (existing !== null) {
-    const url = `http://127.0.0.1:${port0}/`
-    const raised = has('open') ? await focusExisting(url) : false
-    process.stdout.write(`工作清单已经在跑：${url}${raised ? '（已切到那个窗口）' : ''}\n数据：${existing.dataFile}\n`)
+    await reuseRunning(existing, `http://127.0.0.1:${port0}/`)
     return
   }
 

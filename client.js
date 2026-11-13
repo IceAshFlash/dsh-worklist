@@ -2960,6 +2960,12 @@ window.__ModuleLoader__.load({
     refresh()
     pollTimer = setInterval(poll, 2000)
     doc.addEventListener('visibilitychange', poll)
+    // 心跳：告诉独立窗口的服务「这一页还开着」。另一个启动器据此判断该唤醒还是重开。
+    // DSH 面板里这个路径不存在，404 就算了。
+    var pingTimer = setInterval(function () {
+      if (typeof fetch !== 'function') return
+      fetch(base + '/page-ping', { method: 'POST' }).catch(function () {})
+    }, 20000)
 
     return {
       refresh: refresh,
@@ -2967,6 +2973,8 @@ window.__ModuleLoader__.load({
         mounted = false
         if (pollTimer !== null) clearInterval(pollTimer)
         pollTimer = null
+        if (pingTimer !== null) clearInterval(pingTimer)
+        pingTimer = null
         doc.removeEventListener('visibilitychange', poll)
         doc.removeEventListener('keydown', onKey)
         if (mini.win !== null) {
